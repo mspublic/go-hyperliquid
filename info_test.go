@@ -516,15 +516,22 @@ func TestSpotUserState(t *testing.T) {
 						Coin:     "USDC",
 						Token:    0,
 						Hold:     "0.0",
-						Total:    "19.9969993",
+						Total:    "47.88199677",
 						EntryNtl: "0.0",
 					},
 					{
 						Coin:     "HYPE",
 						Token:    1105,
-						Hold:     "0.2",
-						Total:    "0.24965",
-						EntryNtl: "24.982487",
+						Hold:     "0.0",
+						Total:    "0.369454",
+						EntryNtl: "43.25289247",
+					},
+					{
+						Coin:     "TZERO",
+						Token:    1204,
+						Hold:     "0.0",
+						Total:    "27.79053404",
+						EntryNtl: "0.17445213",
 					},
 					{
 						Coin:     "USOL",
@@ -535,7 +542,7 @@ func TestSpotUserState(t *testing.T) {
 					},
 				},
 			},
-			record:     false,
+			record:     false, // Set to false after recording
 			useTestnet: true,
 		},
 	}
@@ -607,9 +614,9 @@ func TestUserActiveAssetData(t *testing.T) {
 					Type:  "cross",
 					Value: 10,
 				},
-				MaxTradeSzs:      []string{"72.42", "72.42"},
-				AvailableToTrade: []string{"680.955673", "680.955673"},
-				MarkPx:           "94.017",
+				MaxTradeSzs:      []string{"87.34", "87.34"},
+				AvailableToTrade: []string{"650.055798", "650.055798"},
+				MarkPx:           "74.428",
 			},
 			record:     false, // Set to false after recording
 			useTestnet: true,
