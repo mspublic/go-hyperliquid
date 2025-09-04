@@ -69,6 +69,31 @@ make generate
 
 **Important**: Always commit the generated files along with your changes.
 
+### Performance Considerations
+
+When contributing to this library, keep these performance guidelines in mind:
+
+1. **JSON Operations**: Use EasyJSON for new structs that handle high-frequency data
+2. **Memory Allocations**: Consider using object pools for frequently created objects
+3. **Error Handling**: Use pre-defined errors from `errors.go` when possible
+4. **Concurrency**: Prefer atomic operations over mutexes for simple counters
+5. **WebSocket**: Be mindful of blocking operations in message processing paths
+
+### Benchmarking Changes
+
+For performance-related changes, include benchmarks:
+
+```bash
+# Run benchmarks before changes
+go test -bench=BenchmarkYourArea -benchmem -run=^$ > before.txt
+
+# Make your changes, then run benchmarks again
+go test -bench=BenchmarkYourArea -benchmem -run=^$ > after.txt
+
+# Compare results
+benchcmp before.txt after.txt
+```
+
 ### Commit Messages
 
 We follow conventional commit format:

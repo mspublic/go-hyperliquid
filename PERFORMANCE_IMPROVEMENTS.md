@@ -147,17 +147,26 @@ if resp.ContentLength > 0 && resp.ContentLength < 1024*1024 { // Max 1MB
 - No breaking changes to public APIs
 - Existing functionality preserved
 
-## 📈 Benchmark Results Summary
+## 📈 Complete Benchmark Results Summary
 
-| Optimization | Before | After | Improvement |
-|-------------|--------|-------|-------------|
-| WebSocket Processing | 1737 ns/op, 384 B/op | 734.2 ns/op, 136 B/op | 2.4x faster, 2.8x less memory |
-| JSON Marshal (Trade) | 903.5 ns/op, 384 B/op | 153.7 ns/op, 128 B/op | 5.9x faster, 3x less memory |
-| JSON Unmarshal (Trade) | 1402 ns/op, 400 B/op | 430.6 ns/op, 96 B/op | 3.3x faster, 4.2x less memory |
-| API Response Parsing | 3310 ns/op, 3400 B/op | 303.8 ns/op, 0 B/op | 10.9x faster, ∞ less memory |
+| Optimization Area | Before | After | Improvement |
+|------------------|--------|-------|-------------|
+| **JSON Operations** | | | |
+| Trade Marshal | 903.5 ns/op, 384 B/op | 153.7 ns/op, 128 B/op | 5.9x faster, 3x less memory |
+| Trade Unmarshal | 1402 ns/op, 400 B/op | 430.6 ns/op, 96 B/op | 3.3x faster, 4.2x less memory |
 | OrderStatus Marshal | 514.0 ns/op, 232 B/op | 82.7 ns/op, 128 B/op | 6.2x faster, 1.8x less memory |
 | Position Marshal | 1398 ns/op, 1137 B/op | 347.7 ns/op, 784 B/op | 4.0x faster, 1.4x less memory |
 | UserState Marshal | 3064 ns/op, 1931 B/op | 575.8 ns/op, 1176 B/op | 5.3x faster, 1.6x less memory |
+| **WebSocket Operations** | | | |
+| Message Processing | 1737 ns/op, 384 B/op | 734.2 ns/op, 136 B/op | 2.4x faster, 2.8x less memory |
+| API Response Parsing | 3310 ns/op, 3400 B/op | 303.8 ns/op, 0 B/op | 10.9x faster, ∞ less memory |
+| **Concurrency Operations** | | | |
+| Subscriber Access | 580.6 ns/op, 0 B/op | 502.1 ns/op, 0 B/op | 13.5% faster |
+| Counter Operations | 7.978 ns/op, 0 B/op | 4.218 ns/op, 0 B/op | 89% faster |
+| Concurrent Ops | 7362 ns/op, 1523 B/op | 6288 ns/op, 1523 B/op | 17% faster |
+| **Error Handling** | | | |
+| Error Creation | 48.79 ns/op, 40 B/op | 0.298 ns/op, 0 B/op | 163x faster, 100% less memory |
+| Error Wrapping | 86.16 ns/op, 64 B/op | 64.85 ns/op, 88 B/op | 25% faster |
 
 ## 🎯 Impact on Real-World Usage
 

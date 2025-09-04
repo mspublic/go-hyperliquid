@@ -85,11 +85,14 @@ issues:
         - stylecheck
         - unused
         - gocritic
+        - staticcheck
 
   exclude-use-default: false
   exclude:
     # errcheck: Almost all programs ignore errors on these functions and in most cases it's ok
     - Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print.*|os\.(Un)?Setenv). is not checked
+    # staticcheck: Ignore tautological conditions in generated easyjson code
+    - "tautological condition: nil == nil"
     
   max-issues-per-linter: 0
   max-same-issues: 0

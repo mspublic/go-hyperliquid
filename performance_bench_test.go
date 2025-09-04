@@ -283,6 +283,59 @@ func BenchmarkHTTPResponseReadingOptimized(b *testing.B) {
 	}
 }
 
+// BenchmarkOrderWirePoolUsage benchmarks the order wire pool optimization
+func BenchmarkOrderWirePoolUsage(b *testing.B) {
+	orders := make([]CreateOrderRequest, 10)
+	for i := range orders {
+		orders[i] = CreateOrderRequest{
+			Coin:     "BTC",
+			IsBuy:    true,
+			Price:    50000.0,
+			Size:     0.1,
+			OrderType: OrderType{Limit: &LimitOrderType{Tif: "Gtc"}},
+		}
+	}
+
+	b.Run("WithoutPool", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			// Direct allocation (what we had before)
+			orderRequests := make([]OrderWire, len(orders))
+			for j := range orders {
+				orderRequests[j] = OrderWire{} // Simulate usage
+			}
+			_ = orderRequests
+		}
+	})
+
+	b.Run("WithPool", func(b *testing.B) {
+		pool := sync.Pool{
+			New: func() any {
+				slice := make([]OrderWire, 0, 8)
+				return &slice
+			},
+		}
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			// Pool-based allocation (current implementation)
+			orderRequestsPtr := pool.Get().(*[]OrderWire)
+			if cap(*orderRequestsPtr) < len(orders) {
+				*orderRequestsPtr = make([]OrderWire, 0, len(orders))
+			}
+			*orderRequestsPtr = (*orderRequestsPtr)[:len(orders)]
+			orderRequests := *orderRequestsPtr
+			
+			for j := range orders {
+				orderRequests[j] = OrderWire{} // Simulate usage
+			}
+			
+			*orderRequestsPtr = (*orderRequestsPtr)[:0]
+			pool.Put(orderRequestsPtr)
+		}
+	})
+}
+
 // BenchmarkErrorHandlingOptimizations benchmarks error handling improvements
 func BenchmarkErrorHandlingOptimizations(b *testing.B) {
 	// Test pre-defined errors vs fmt.Errorf

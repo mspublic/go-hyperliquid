@@ -18,22 +18,34 @@ import (
 const (
 	// pingInterval is the interval for sending ping messages to keep WebSocket alive
 	pingInterval = 50 * time.Second
+
+	// Default configuration values for WebSocket client
+	defaultBatchSize            = 10
+	defaultBatchTimeoutMs       = 5
+	defaultMessageBufferSize    = 100
+	defaultMaxReconnectAttempts = 10
+	defaultReadBufferSize       = 4096
+	defaultWriteBufferSize      = 1024
+	defaultHandshakeTimeoutSec  = 45
 )
 
-// wsMessagePool reduces allocations for WebSocket message processing
-var wsMessagePool = sync.Pool{
-	New: func() any {
-		return &wsMessage{}
-	},
-}
+// Pool variables for memory optimization
+var (
+	// wsMessagePool reduces allocations for WebSocket message processing
+	wsMessagePool = sync.Pool{
+		New: func() any {
+			return &wsMessage{}
+		},
+	}
 
-// subscriberSlicePool reduces allocations for subscriber slice operations
-var subscriberSlicePool = sync.Pool{
-	New: func() any {
-		slice := make([]*uniqSubscriber, 0, 16) // Pre-allocate for 16 subscribers
-		return &slice
-	},
-}
+	// subscriberSlicePool reduces allocations for subscriber slice operations
+	subscriberSlicePool = sync.Pool{
+		New: func() any {
+			slice := make([]*uniqSubscriber, 0, 16) // Pre-allocate for 16 subscribers
+			return &slice
+		},
+	}
+)
 
 type Subscription struct {
 	ID      string
@@ -83,10 +95,10 @@ func NewWebsocketClient(baseURL string, opts ...WsOpt) *WebsocketClient {
 		url:                  wsURL,
 		done:                 make(chan struct{}),
 		reconnectWait:        time.Second,
-		batchSize:            10,                        // Process up to 10 messages in batch
-		batchTimeout:         5 * time.Millisecond,      // Max 5ms batching delay
-		messageBuffer:        make(chan wsMessage, 100), // Buffer up to 100 messages
-		maxReconnectAttempts: 10,                        // Max reconnection attempts
+		batchSize:            defaultBatchSize,
+		batchTimeout:         defaultBatchTimeoutMs * time.Millisecond,
+		messageBuffer:        make(chan wsMessage, defaultMessageBufferSize),
+		maxReconnectAttempts: defaultMaxReconnectAttempts,
 		msgDispatcherRegistry: map[string]msgDispatcher{
 			ChannelPong:         NewPongDispatcher(),
 			ChannelTrades:       NewMsgDispatcher[Trades](ChannelTrades),
@@ -117,9 +129,9 @@ func (w *WebsocketClient) Connect(ctx context.Context) error {
 	}
 
 	dialer := websocket.Dialer{
-		HandshakeTimeout:  45 * time.Second,
-		ReadBufferSize:    4096,  // 4KB read buffer
-		WriteBufferSize:   1024,  // 1KB write buffer
+		HandshakeTimeout:  defaultHandshakeTimeoutSec * time.Second,
+		ReadBufferSize:    defaultReadBufferSize,
+		WriteBufferSize:   defaultWriteBufferSize,
 		EnableCompression: false, // Disable compression for trading (latency over bandwidth)
 	}
 
@@ -175,7 +187,9 @@ func (w *WebsocketClient) subscribe(
 			w.asyncCallbacks, // Pass async dispatch setting
 		)
 
-		// Try to store, but use existing if another goroutine created it first
+		// Atomic operation: try to store new subscriber, but use existing if another
+		// goroutine created it first. This prevents race conditions in concurrent
+		// subscription scenarios while avoiding locks.
 		if actualVal, loaded := w.subscribers.LoadOrStore(pkey, subscriber); loaded {
 			subscriber = actualVal.(*uniqSubscriber)
 		}
@@ -203,6 +217,8 @@ func (w *WebsocketClient) Close() error {
 	return err
 }
 
+// Connection Management Methods
+
 func (w *WebsocketClient) close() error {
 	close(w.done)
 
@@ -225,7 +241,7 @@ func (w *WebsocketClient) close() error {
 	return nil
 }
 
-// Private methods
+// Message Processing Methods
 
 func (w *WebsocketClient) readPump(ctx context.Context) {
 	defer func() {
@@ -270,12 +286,14 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 				continue
 			}
 
-			// Send to batch processor for efficient handling
+			// Intelligent message routing: try batching first, fallback to immediate processing
+			// This ensures we never block the read pump while optimizing for throughput
 			select {
 			case w.messageBuffer <- *wsMsg:
-				// Message sent to batch processor
+				// Message successfully queued for batch processing
 			default:
-				// Buffer full, process immediately to avoid blocking
+				// Buffer is full - process immediately to maintain real-time behavior
+				// This prevents message loss while maintaining low latency
 				if err := w.dispatch(*wsMsg); err != nil {
 					if w.logger != nil {
 						w.logger.Errorf("failed to dispatch websocket message: %v", err)
@@ -416,6 +434,8 @@ func (w *WebsocketClient) reconnect(ctx context.Context) {
 	}
 }
 
+// Subscription Management Methods
+
 func (w *WebsocketClient) resubscribeAll() error {
 	var firstError error
 	w.subscribers.Range(func(key, value any) bool {
@@ -465,7 +485,11 @@ func (w *WebsocketClient) writeJSON(v any) error {
 	return w.conn.WriteJSON(v)
 }
 
-// GetLastError returns the last connection error (for monitoring)
+// Health and Monitoring Methods
+
+// GetLastError returns the last connection error that occurred during WebSocket operations.
+// This method is useful for monitoring connection health and debugging connection issues.
+// Returns nil if no error has occurred or if the connection is healthy.
 func (w *WebsocketClient) GetLastError() error {
 	if err := w.lastError.Load(); err != nil {
 		return err.(error)
@@ -473,12 +497,18 @@ func (w *WebsocketClient) GetLastError() error {
 	return nil
 }
 
-// GetReconnectAttempts returns the current number of reconnection attempts
+// GetReconnectAttempts returns the current number of reconnection attempts since the last successful connection.
+// This counter resets to 0 when a connection is successfully established.
+// Useful for monitoring connection stability and implementing alerting logic.
 func (w *WebsocketClient) GetReconnectAttempts() int64 {
 	return w.reconnectAttempts.Load()
 }
 
-// IsHealthy returns true if the WebSocket connection is healthy
+// IsHealthy returns true if the WebSocket connection is in a healthy state.
+// A connection is considered healthy if:
+// - The connection is established (not nil)
+// - No recent errors have occurred
+// This method is safe for concurrent use and provides a quick health check.
 func (w *WebsocketClient) IsHealthy() bool {
 	w.mu.RLock()
 	defer w.mu.RUnlock()

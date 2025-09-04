@@ -22,19 +22,24 @@ const (
 
 	// httpErrorStatusCode is the minimum status code considered an error
 	httpErrorStatusCode = 400
+
+	// HTTP client configuration constants
+	defaultBufferCapacity          = 4096        // 4KB for request buffers
+	defaultResponseCapacity        = 8192        // 8KB for response buffers
+	maxResponseSizeForOptimization = 1024 * 1024 // 1MB max for pre-allocation
 )
 
 // bufferPool reduces allocations for HTTP request/response buffers
 var bufferPool = sync.Pool{
 	New: func() any {
-		return bytes.NewBuffer(make([]byte, 0, 4096)) // 4KB initial capacity
+		return bytes.NewBuffer(make([]byte, 0, defaultBufferCapacity))
 	},
 }
 
 // responseBufferPool for different response sizes
 var responseBufferPool = sync.Pool{
 	New: func() any {
-		slice := make([]byte, 0, 8192) // 8KB initial capacity for responses
+		slice := make([]byte, 0, defaultResponseCapacity)
 		return &slice
 	},
 }
@@ -46,6 +51,14 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// NewClient creates a new HTTP client for the Hyperliquid API.
+// The client is configured with sensible defaults and can be customized using ClientOpt functions.
+//
+// Parameters:
+//   - baseURL: The base URL for the API (use MainnetAPIURL, TestnetAPIURL, or custom URL)
+//   - opts: Optional configuration functions to customize the client behavior
+//
+// Returns a configured Client ready for API operations.
 func NewClient(baseURL string, opts ...ClientOpt) *Client {
 	if baseURL == "" {
 		baseURL = MainnetAPIURL
@@ -105,7 +118,7 @@ func (c *Client) post(path string, payload any) ([]byte, error) {
 	var body []byte
 	if resp.Body != nil {
 		// Use optimized reading based on Content-Length
-		if resp.ContentLength > 0 && resp.ContentLength < 1024*1024 { // Max 1MB
+		if resp.ContentLength > 0 && resp.ContentLength < maxResponseSizeForOptimization {
 			// Pre-allocate exact size and read directly
 			body = make([]byte, resp.ContentLength)
 			_, err = io.ReadFull(resp.Body, body)

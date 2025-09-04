@@ -29,7 +29,15 @@ var errorBuilderPool = sync.Pool{
 	},
 }
 
-// WrapError efficiently wraps an error with context using pooled string builder
+// WrapError efficiently wraps an error with context using pooled string builder.
+// This function provides better performance than fmt.Errorf for error wrapping
+// by reusing string builders from a pool, reducing memory allocations.
+//
+// Parameters:
+//   - base: The underlying error to wrap (returns nil if base is nil)
+//   - context: The contextual message to prepend to the error
+//
+// Returns a new error with the format: "context: base.Error()"
 func WrapError(base error, context string) error {
 	if base == nil {
 		return nil

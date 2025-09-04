@@ -80,8 +80,20 @@ func newCreateOrderAction(
 	orders []CreateOrderRequest,
 	info *BuilderInfo,
 ) (OrderAction, error) {
-	// Use optimized slice allocation
-	orderRequests := make([]OrderWire, len(orders))
+	// Use pool for order wire slice to reduce allocations
+	orderRequestsPtr := orderWirePool.Get().(*[]OrderWire)
+	defer func() {
+		// Reset slice and return to pool
+		*orderRequestsPtr = (*orderRequestsPtr)[:0]
+		orderWirePool.Put(orderRequestsPtr)
+	}()
+	
+	// Ensure sufficient capacity
+	if cap(*orderRequestsPtr) < len(orders) {
+		*orderRequestsPtr = make([]OrderWire, 0, len(orders))
+	}
+	*orderRequestsPtr = (*orderRequestsPtr)[:len(orders)]
+	orderRequests := *orderRequestsPtr
 
 	for i, order := range orders {
 		priceWire, err := floatToWire(order.Price)
