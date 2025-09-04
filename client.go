@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/sonirico/vago/lol"
 )
@@ -22,6 +23,21 @@ const (
 	// httpErrorStatusCode is the minimum status code considered an error
 	httpErrorStatusCode = 400
 )
+
+// bufferPool reduces allocations for HTTP request/response buffers
+var bufferPool = sync.Pool{
+	New: func() any {
+		return bytes.NewBuffer(make([]byte, 0, 4096)) // 4KB initial capacity
+	},
+}
+
+// responseBufferPool for different response sizes
+var responseBufferPool = sync.Pool{
+	New: func() any {
+		slice := make([]byte, 0, 8192) // 8KB initial capacity for responses
+		return &slice
+	},
+}
 
 type Client struct {
 	logger     lol.Logger
@@ -53,12 +69,18 @@ func (c *Client) post(path string, payload any) ([]byte, error) {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
+	// Use buffer pool for request body
+	buffer := bufferPool.Get().(*bytes.Buffer)
+	buffer.Reset()
+	defer bufferPool.Put(buffer)
+	buffer.Write(jsonData)
+
 	url := c.baseURL + path
 	req, err := http.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
 		url,
-		bytes.NewBuffer(jsonData),
+		buffer,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -82,13 +104,39 @@ func (c *Client) post(path string, payload any) ([]byte, error) {
 
 	var body []byte
 	if resp.Body != nil {
-		// Pre-allocate buffer based on Content-Length if available
+		// Use optimized reading based on Content-Length
 		if resp.ContentLength > 0 && resp.ContentLength < 1024*1024 { // Max 1MB
-			body = make([]byte, 0, resp.ContentLength)
-		}
-		body, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read response body: %w", err)
+			// Pre-allocate exact size and read directly
+			body = make([]byte, resp.ContentLength)
+			_, err = io.ReadFull(resp.Body, body)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read response body: %w", err)
+			}
+		} else {
+			// Use pooled buffer for unknown sizes
+			bufferPtr := responseBufferPool.Get().(*[]byte)
+			buffer := (*bufferPtr)[:0] // Reset length
+			//nolint:staticcheck // SA6002: Pool.Put is more readable this way
+			defer responseBufferPool.Put(bufferPtr)
+
+			// Read in chunks to reuse buffer
+			chunk := make([]byte, 4096)
+			for {
+				n, err := resp.Body.Read(chunk)
+				if n > 0 {
+					buffer = append(buffer, chunk[:n]...)
+				}
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return nil, fmt.Errorf("failed to read response body: %w", err)
+				}
+			}
+
+			// Copy to final result
+			body = make([]byte, len(buffer))
+			copy(body, buffer)
 		}
 	}
 

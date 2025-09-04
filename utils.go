@@ -5,7 +5,15 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// stringBuilderPool reduces allocations for string building operations
+var stringBuilderPool = sync.Pool{
+	New: func() any {
+		return &strings.Builder{}
+	},
+}
 
 // roundToDecimals rounds a float64 to the specified number of decimals.
 func roundToDecimals(value float64, decimals int) float64 {

@@ -2,6 +2,7 @@ package hyperliquid
 
 import (
 	"os"
+	"time"
 
 	"github.com/sonirico/vago/lol"
 )
@@ -50,5 +51,32 @@ func ClientOptDebugMode() ClientOpt {
 			lol.WithWriter(os.Stderr),
 			lol.WithEnv(lol.EnvDev),
 		)
+	}
+}
+
+// WsOptBatchSize configures WebSocket message batching size
+func WsOptBatchSize(size int) WsOpt {
+	return func(w *WebsocketClient) {
+		if size > 0 {
+			w.batchSize = size
+		}
+	}
+}
+
+// WsOptBatchTimeout configures WebSocket message batching timeout
+func WsOptBatchTimeout(timeout time.Duration) WsOpt {
+	return func(w *WebsocketClient) {
+		if timeout > 0 {
+			w.batchTimeout = timeout
+		}
+	}
+}
+
+// WsOptBufferSize configures WebSocket message buffer size
+func WsOptBufferSize(size int) WsOpt {
+	return func(w *WebsocketClient) {
+		if size > 0 {
+			w.messageBuffer = make(chan wsMessage, size)
+		}
 	}
 }

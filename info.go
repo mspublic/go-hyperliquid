@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+//go:generate easyjson -all
+
 const (
 	// spotAssetIndexOffset is the offset added to spot asset indices
 	spotAssetIndexOffset = 10000

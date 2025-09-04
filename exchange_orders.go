@@ -3,7 +3,18 @@ package hyperliquid
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 )
+
+//go:generate easyjson -all
+
+// orderWirePool reduces allocations for order wire slices
+var orderWirePool = sync.Pool{
+	New: func() any {
+		slice := make([]OrderWire, 0, 8) // Pre-allocate for 8 orders
+		return &slice
+	},
+}
 
 type CreateOrderRequest struct {
 	Coin          string
@@ -39,7 +50,7 @@ func (s *OrderStatus) String() string {
 }
 
 type OrderResponse struct {
-	Statuses []OrderStatus
+	Statuses []OrderStatus `json:"statuses"`
 }
 
 func newOrderTypeWire(o CreateOrderRequest) orderWireType {
@@ -69,7 +80,9 @@ func newCreateOrderAction(
 	orders []CreateOrderRequest,
 	info *BuilderInfo,
 ) (OrderAction, error) {
+	// Use optimized slice allocation
 	orderRequests := make([]OrderWire, len(orders))
+
 	for i, order := range orders {
 		priceWire, err := floatToWire(order.Price)
 		if err != nil {

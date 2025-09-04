@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+//go:generate easyjson -all
+
 type Exchange struct {
 	debug        bool
 	client       *Client

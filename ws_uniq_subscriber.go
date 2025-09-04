@@ -69,8 +69,17 @@ func (u *uniqSubscriber) dispatch(data any) {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
 
+	// Dispatch to callbacks asynchronously to avoid blocking
 	for _, cb := range u.subscribers {
-		cb(data)
+		go func(callback callback, msg any) {
+			defer func() {
+				if r := recover(); r != nil {
+					// Log panic in callback but don't crash the dispatcher
+					// Note: In production, you might want to use a proper logger here
+				}
+			}()
+			callback(msg)
+		}(cb, data)
 	}
 }
 

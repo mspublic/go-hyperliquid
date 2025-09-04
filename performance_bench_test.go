@@ -1,10 +1,14 @@
 package hyperliquid
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/valyala/fastjson"
 )
@@ -28,7 +32,7 @@ func BenchmarkWebSocketMessageProcessing(b *testing.B) {
 				return &wsMessage{}
 			},
 		}
-		
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			msg := pool.Get().(*wsMessage)
@@ -68,7 +72,7 @@ func BenchmarkEasyJSONvsStandardJSON(b *testing.B) {
 	})
 
 	tradeJSON, _ := json.Marshal(trade)
-	
+
 	b.Run("StandardJSON_Unmarshal", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -156,6 +160,290 @@ func BenchmarkMemoryAllocations(b *testing.B) {
 			builder.WriteString("_")
 			builder.WriteString("end")
 			_ = builder.String()
+		}
+	})
+}
+
+// BenchmarkCriticalStructsSerialization benchmarks the newly optimized structs
+func BenchmarkCriticalStructsSerialization(b *testing.B) {
+	// Test OrderStatus - critical for trading
+	orderStatus := OrderStatus{
+		Resting: &OrderStatusResting{
+			Oid:      12345678901,
+			ClientID: stringPtr("test-client-id"),
+			Status:   "open",
+		},
+	}
+
+	b.Run("OrderStatus_EasyJSON_Marshal", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = orderStatus.MarshalJSON()
+		}
+	})
+
+	b.Run("OrderStatus_StandardJSON_Marshal", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = json.Marshal(orderStatus)
+		}
+	})
+
+	// Test Position - critical for account management
+	position := Position{
+		Coin:           "BTC",
+		EntryPx:        stringPtr("50000.0"),
+		Leverage:       Leverage{Type: "cross", Value: 10},
+		LiquidationPx:  stringPtr("45000.0"),
+		MarginUsed:     "5000.0",
+		PositionValue:  "50000.0",
+		ReturnOnEquity: "0.05",
+		Szi:            "1.0",
+		UnrealizedPnl:  "2500.0",
+	}
+
+	b.Run("Position_EasyJSON_Marshal", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = position.MarshalJSON()
+		}
+	})
+
+	b.Run("Position_StandardJSON_Marshal", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = json.Marshal(position)
+		}
+	})
+
+	// Test UserState - critical for account data
+	userState := UserState{
+		AssetPositions: []AssetPosition{
+			{Position: position, Type: "oneWay"},
+		},
+		CrossMarginSummary: MarginSummary{
+			AccountValue:    "100000.0",
+			TotalMarginUsed: "5000.0",
+			TotalNtlPos:     "50000.0",
+			TotalRawUsd:     "100000.0",
+		},
+		MarginSummary: MarginSummary{
+			AccountValue:    "100000.0",
+			TotalMarginUsed: "5000.0",
+			TotalNtlPos:     "50000.0",
+			TotalRawUsd:     "100000.0",
+		},
+		Withdrawable: "95000.0",
+	}
+
+	b.Run("UserState_EasyJSON_Marshal", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = userState.MarshalJSON()
+		}
+	})
+
+	b.Run("UserState_StandardJSON_Marshal", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = json.Marshal(userState)
+		}
+	})
+}
+
+// BenchmarkHTTPResponseReadingOptimized benchmarks the improved HTTP response reading
+func BenchmarkHTTPResponseReadingOptimized(b *testing.B) {
+	// Simulate different response sizes
+	sizes := []int{1024, 4096, 16384} // 1KB, 4KB, 16KB
+
+	for _, size := range sizes {
+		responseData := make([]byte, size)
+		for i := range responseData {
+			responseData[i] = byte('a' + (i % 26))
+		}
+
+		b.Run(fmt.Sprintf("Size_%dB_ReadAll", size), func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				reader := bytes.NewReader(responseData)
+				_, _ = io.ReadAll(reader)
+			}
+		})
+
+		b.Run(fmt.Sprintf("Size_%dB_ReadFull", size), func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				reader := bytes.NewReader(responseData)
+				buffer := make([]byte, size)
+				_, _ = io.ReadFull(reader, buffer)
+			}
+		})
+	}
+}
+
+// BenchmarkWebSocketOptimizations benchmarks the WebSocket improvements
+func BenchmarkWebSocketOptimizations(b *testing.B) {
+	// Test message batching vs individual processing
+	messages := make([]wsMessage, 100)
+	for i := range messages {
+		messages[i] = wsMessage{
+			Channel: "trades",
+			Data:    []byte(fmt.Sprintf(`{"coin":"BTC","side":"B","px":"50000.%d","sz":"0.1","time":%d}`, i, time.Now().UnixNano())),
+		}
+	}
+
+	b.Run("IndividualProcessing", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			for _, msg := range messages {
+				// Simulate individual message processing
+				_ = msg.Channel
+				_ = msg.Data
+			}
+		}
+	})
+
+	b.Run("BatchProcessing", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			// Simulate batch processing
+			for j := 0; j < len(messages); j += 10 {
+				end := j + 10
+				if end > len(messages) {
+					end = len(messages)
+				}
+				batch := messages[j:end]
+				for _, msg := range batch {
+					_ = msg.Channel
+					_ = msg.Data
+				}
+			}
+		}
+	})
+
+	// Test async vs sync callback dispatch
+	b.Run("SyncCallbackDispatch", func(b *testing.B) {
+		callbacks := make([]func(any), 5)
+		for i := range callbacks {
+			callbacks[i] = func(data any) {
+				// Simulate callback processing
+				time.Sleep(100 * time.Nanosecond)
+			}
+		}
+		
+		data := "test_data"
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			for _, cb := range callbacks {
+				cb(data)
+			}
+		}
+	})
+
+	b.Run("AsyncCallbackDispatch", func(b *testing.B) {
+		callbacks := make([]func(any), 5)
+		for i := range callbacks {
+			callbacks[i] = func(data any) {
+				// Simulate callback processing
+				time.Sleep(100 * time.Nanosecond)
+			}
+		}
+		
+		data := "test_data"
+		
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var wg sync.WaitGroup
+			for _, cb := range callbacks {
+				wg.Add(1)
+				go func(callback func(any), msg any) {
+					defer wg.Done()
+					callback(msg)
+				}(cb, data)
+			}
+			wg.Wait()
+		}
+	})
+}
+
+// BenchmarkMemoryPoolingOptimizations benchmarks the memory pooling improvements
+func BenchmarkMemoryPoolingOptimizations(b *testing.B) {
+	// Test WebSocket subscriber slice optimization
+	b.Run("SubscriberSlice_WithoutPool", func(b *testing.B) {
+		mockSubscribers := make(map[string]*uniqSubscriber)
+		for i := 0; i < 10; i++ {
+			mockSubscribers[fmt.Sprintf("sub%d", i)] = &uniqSubscriber{}
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var subscribers []*uniqSubscriber
+			for _, subscriber := range mockSubscribers {
+				subscribers = append(subscribers, subscriber)
+			}
+			_ = subscribers
+		}
+	})
+
+	b.Run("SubscriberSlice_WithPool", func(b *testing.B) {
+		mockSubscribers := make(map[string]*uniqSubscriber)
+		for i := 0; i < 10; i++ {
+			mockSubscribers[fmt.Sprintf("sub%d", i)] = &uniqSubscriber{}
+		}
+
+		pool := sync.Pool{
+			New: func() any {
+				slice := make([]*uniqSubscriber, 0, 16)
+				return &slice
+			},
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			subscribersPtr := pool.Get().(*[]*uniqSubscriber)
+			subscribers := (*subscribersPtr)[:0]
+			for _, subscriber := range mockSubscribers {
+				subscribers = append(subscribers, subscriber)
+			}
+			*subscribersPtr = (*subscribersPtr)[:0] // Reset slice
+			//nolint:staticcheck // SA6002: Pool.Put is more readable this way
+			pool.Put(subscribersPtr)
+		}
+	})
+
+	// Test string building optimization
+	b.Run("StringBuilding_Concatenation", func(b *testing.B) {
+		base := "transfer_amount_123.45"
+		vault := "vault_address_abc123"
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			result := base + " subaccount:" + vault
+			_ = result
+		}
+	})
+
+	b.Run("StringBuilding_WithPool", func(b *testing.B) {
+		base := "transfer_amount_123.45"
+		vault := "vault_address_abc123"
+
+		pool := sync.Pool{
+			New: func() any {
+				return &strings.Builder{}
+			},
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			builder := pool.Get().(*strings.Builder)
+			builder.Reset()
+			builder.WriteString(base)
+			builder.WriteString(" subaccount:")
+			builder.WriteString(vault)
+			result := builder.String()
+			pool.Put(builder)
+			_ = result
 		}
 	})
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+//go:generate easyjson -all
+
 type TradesSubscriptionParams struct {
 	Coin string
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+//go:generate easyjson -all
+
 type CandlesSubscriptionParams struct {
 	Coin     string
 	Interval string

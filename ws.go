@@ -13,7 +13,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/sonirico/vago/lol"
-	"github.com/sonirico/vago/maps"
 )
 
 const (
@@ -25,6 +24,14 @@ const (
 var wsMessagePool = sync.Pool{
 	New: func() any {
 		return &wsMessage{}
+	},
+}
+
+// subscriberSlicePool reduces allocations for subscriber slice operations
+var subscriberSlicePool = sync.Pool{
+	New: func() any {
+		slice := make([]*uniqSubscriber, 0, 16) // Pre-allocate for 16 subscribers
+		return &slice
 	},
 }
 
@@ -47,6 +54,11 @@ type WebsocketClient struct {
 	reconnectWait         time.Duration
 	debug                 bool
 	logger                lol.Logger
+	
+	// Message batching for high-frequency scenarios
+	batchSize     int
+	batchTimeout  time.Duration
+	messageBuffer chan wsMessage
 }
 
 func NewWebsocketClient(baseURL string, opts ...WsOpt) *WebsocketClient {
@@ -66,6 +78,9 @@ func NewWebsocketClient(baseURL string, opts ...WsOpt) *WebsocketClient {
 		done:          make(chan struct{}),
 		reconnectWait: time.Second,
 		subscribers:   make(map[string]*uniqSubscriber),
+		batchSize:     10,                        // Process up to 10 messages in batch
+		batchTimeout:  5 * time.Millisecond,     // Max 5ms batching delay
+		messageBuffer: make(chan wsMessage, 100), // Buffer up to 100 messages
 		msgDispatcherRegistry: map[string]msgDispatcher{
 			ChannelPong:         NewPongDispatcher(),
 			ChannelTrades:       NewMsgDispatcher[Trades](ChannelTrades),
@@ -95,7 +110,12 @@ func (w *WebsocketClient) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	dialer := websocket.Dialer{}
+	dialer := websocket.Dialer{
+		HandshakeTimeout:  45 * time.Second,
+		ReadBufferSize:    4096,  // 4KB read buffer
+		WriteBufferSize:   1024,  // 1KB write buffer  
+		EnableCompression: false, // Disable compression for trading (latency over bandwidth)
+	}
 
 	//nolint:bodyclose // WebSocket connections don't have response bodies to close
 	conn, _, err := dialer.DialContext(ctx, w.url, nil)
@@ -107,6 +127,7 @@ func (w *WebsocketClient) Connect(ctx context.Context) error {
 
 	go w.readPump(ctx)
 	go w.pingPump(ctx)
+	go w.batchProcessor(ctx) // Start batch processor
 
 	return w.resubscribeAll()
 }
@@ -218,19 +239,28 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 				w.logger.Debugf("[<] %s", string(msg))
 			}
 
-			wsMsg := wsMessagePool.Get().(*wsMessage)
+						wsMsg := wsMessagePool.Get().(*wsMessage)
 			wsMsg.Channel = "" // Reset fields
 			wsMsg.Data = nil
-			defer wsMessagePool.Put(wsMsg)
 			
 			if err := wsMsg.UnmarshalJSON(msg); err != nil {
 				w.logger.Errorf("websocket message parse error: %v", err)
+				wsMessagePool.Put(wsMsg) // Return to pool on error
 				continue
 			}
 
-			if err := w.dispatch(*wsMsg); err != nil {
-				w.logger.Errorf("failed to dispatch websocket message: %v", err)
+			// Send to batch processor for efficient handling
+			select {
+			case w.messageBuffer <- *wsMsg:
+				// Message sent to batch processor
+			default:
+				// Buffer full, process immediately to avoid blocking
+				if err := w.dispatch(*wsMsg); err != nil {
+					w.logger.Errorf("failed to dispatch websocket message: %v", err)
+				}
 			}
+			
+			wsMessagePool.Put(wsMsg) // Return to pool after processing
 		}
 	}
 }
@@ -262,10 +292,63 @@ func (w *WebsocketClient) dispatch(msg wsMessage) error {
 	}
 
 	w.mu.RLock()
-	subscribers := maps.Values(w.subscribers)
+	// Use pool for subscriber slice to reduce allocations
+	subscribersPtr := subscriberSlicePool.Get().(*[]*uniqSubscriber)
+	subscribers := (*subscribersPtr)[:0] // Reset length but keep capacity
+
+	for _, subscriber := range w.subscribers {
+		subscribers = append(subscribers, subscriber)
+	}
 	w.mu.RUnlock()
 
-	return dispatcher.Dispatch(subscribers, msg)
+	err := dispatcher.Dispatch(subscribers, msg)
+
+	// Reset and return slice to pool
+	*subscribersPtr = subscribers[:0]
+	subscriberSlicePool.Put(subscribersPtr)
+
+	return err
+}
+
+// batchProcessor handles message batching for improved throughput
+func (w *WebsocketClient) batchProcessor(ctx context.Context) {
+	batch := make([]wsMessage, 0, w.batchSize)
+	ticker := time.NewTicker(w.batchTimeout)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.done:
+			return
+		case msg := <-w.messageBuffer:
+			batch = append(batch, msg)
+			
+			// Process batch when full or on timeout
+			if len(batch) >= w.batchSize {
+				w.processBatch(batch)
+				batch = batch[:0] // Reset batch
+				ticker.Reset(w.batchTimeout)
+			}
+			
+		case <-ticker.C:
+			// Process partial batch on timeout
+			if len(batch) > 0 {
+				w.processBatch(batch)
+				batch = batch[:0] // Reset batch
+			}
+		}
+	}
+}
+
+// processBatch efficiently processes a batch of messages
+func (w *WebsocketClient) processBatch(batch []wsMessage) {
+	for _, msg := range batch {
+		if err := w.dispatch(msg); err != nil {
+			w.logger.Errorf("failed to dispatch batched message: %v", err)
+		}
+	}
 }
 
 func (w *WebsocketClient) reconnect(ctx context.Context) {

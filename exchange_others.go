@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -211,7 +212,14 @@ func (e *Exchange) UsdClassTransfer(amount float64, toPerp bool) (*TransferRespo
 
 	strAmount := formatFloat(amount)
 	if e.vault != "" {
-		strAmount += " subaccount:" + e.vault
+		builder := stringBuilderPool.Get().(*strings.Builder)
+		builder.Reset()
+		defer stringBuilderPool.Put(builder)
+
+		builder.WriteString(strAmount)
+		builder.WriteString(" subaccount:")
+		builder.WriteString(e.vault)
+		strAmount = builder.String()
 	}
 
 	action := UsdClassTransferAction{

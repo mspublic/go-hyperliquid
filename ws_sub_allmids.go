@@ -2,6 +2,8 @@ package hyperliquid
 
 import "fmt"
 
+//go:generate easyjson -all
+
 type AllMidsSubscriptionParams struct {
 	Dex *string
 }

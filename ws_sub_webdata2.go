@@ -2,6 +2,8 @@ package hyperliquid
 
 import "fmt"
 
+//go:generate easyjson -all
+
 type WebData2SubscriptionParams struct {
 	User string
 }
