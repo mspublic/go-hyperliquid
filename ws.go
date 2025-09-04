@@ -21,6 +21,13 @@ const (
 	pingInterval = 50 * time.Second
 )
 
+// wsMessagePool reduces allocations for WebSocket message processing
+var wsMessagePool = sync.Pool{
+	New: func() any {
+		return &wsMessage{}
+	},
+}
+
 type Subscription struct {
 	ID      string
 	Payload any
@@ -211,13 +218,17 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 				w.logger.Debugf("[<] %s", string(msg))
 			}
 
-			var wsMsg wsMessage
-			if err := json.Unmarshal(msg, &wsMsg); err != nil {
+			wsMsg := wsMessagePool.Get().(*wsMessage)
+			wsMsg.Channel = "" // Reset fields
+			wsMsg.Data = nil
+			defer wsMessagePool.Put(wsMsg)
+			
+			if err := wsMsg.UnmarshalJSON(msg); err != nil {
 				w.logger.Errorf("websocket message parse error: %v", err)
 				continue
 			}
 
-			if err := w.dispatch(wsMsg); err != nil {
+			if err := w.dispatch(*wsMsg); err != nil {
 				w.logger.Errorf("failed to dispatch websocket message: %v", err)
 			}
 		}

@@ -80,8 +80,12 @@ func (c *Client) post(path string, payload any) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	body := make([]byte, 0)
+	var body []byte
 	if resp.Body != nil {
+		// Pre-allocate buffer based on Content-Length if available
+		if resp.ContentLength > 0 && resp.ContentLength < 1024*1024 { // Max 1MB
+			body = make([]byte, 0, resp.ContentLength)
+		}
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read response body: %w", err)
