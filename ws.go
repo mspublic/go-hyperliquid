@@ -54,7 +54,7 @@ type WebsocketClient struct {
 	reconnectWait         time.Duration
 	debug                 bool
 	logger                lol.Logger
-	
+
 	// Message batching for high-frequency scenarios
 	batchSize     int
 	batchTimeout  time.Duration
@@ -79,7 +79,7 @@ func NewWebsocketClient(baseURL string, opts ...WsOpt) *WebsocketClient {
 		reconnectWait: time.Second,
 		subscribers:   make(map[string]*uniqSubscriber),
 		batchSize:     10,                        // Process up to 10 messages in batch
-		batchTimeout:  5 * time.Millisecond,     // Max 5ms batching delay
+		batchTimeout:  5 * time.Millisecond,      // Max 5ms batching delay
 		messageBuffer: make(chan wsMessage, 100), // Buffer up to 100 messages
 		msgDispatcherRegistry: map[string]msgDispatcher{
 			ChannelPong:         NewPongDispatcher(),
@@ -113,7 +113,7 @@ func (w *WebsocketClient) Connect(ctx context.Context) error {
 	dialer := websocket.Dialer{
 		HandshakeTimeout:  45 * time.Second,
 		ReadBufferSize:    4096,  // 4KB read buffer
-		WriteBufferSize:   1024,  // 1KB write buffer  
+		WriteBufferSize:   1024,  // 1KB write buffer
 		EnableCompression: false, // Disable compression for trading (latency over bandwidth)
 	}
 
@@ -239,10 +239,10 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 				w.logger.Debugf("[<] %s", string(msg))
 			}
 
-						wsMsg := wsMessagePool.Get().(*wsMessage)
+			wsMsg := wsMessagePool.Get().(*wsMessage)
 			wsMsg.Channel = "" // Reset fields
 			wsMsg.Data = nil
-			
+
 			if err := wsMsg.UnmarshalJSON(msg); err != nil {
 				w.logger.Errorf("websocket message parse error: %v", err)
 				wsMessagePool.Put(wsMsg) // Return to pool on error
@@ -259,7 +259,7 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 					w.logger.Errorf("failed to dispatch websocket message: %v", err)
 				}
 			}
-			
+
 			wsMessagePool.Put(wsMsg) // Return to pool after processing
 		}
 	}
@@ -324,14 +324,14 @@ func (w *WebsocketClient) batchProcessor(ctx context.Context) {
 			return
 		case msg := <-w.messageBuffer:
 			batch = append(batch, msg)
-			
+
 			// Process batch when full or on timeout
 			if len(batch) >= w.batchSize {
 				w.processBatch(batch)
 				batch = batch[:0] // Reset batch
 				ticker.Reset(w.batchTimeout)
 			}
-			
+
 		case <-ticker.C:
 			// Process partial batch on timeout
 			if len(batch) > 0 {
