@@ -11,6 +11,7 @@ The go-hyperliquid library has been extensively optimized for high-performance t
 - **65-100% reduction in memory allocations** across critical paths
 - **Lock-free data structures** for better concurrency
 - **Pre-defined errors** for 163x faster error handling
+- **HTTP connection pooling** with high-performance defaults for trading applications
 
 ## WebSocket Performance Configuration
 
@@ -74,6 +75,74 @@ ws := hyperliquid.NewWebsocketClient(url,
     hyperliquid.WsOptAsyncCallbacks(true),             // Process in background
 )
 ```
+
+## HTTP Client Performance Configuration
+
+The library uses optimized HTTP connection pooling by default for maximum performance:
+
+### Default Configuration
+
+```go
+// Default optimized HTTP client (automatic)
+client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL)
+```
+
+**Default Settings:**
+- **500 idle connections** across all hosts
+- **100 connections per host** 
+- **50 idle connections per host**
+- **90s idle connection timeout**
+- **30s request timeout**
+- **10s dial timeout**
+
+### Custom HTTP Configuration
+
+```go
+import (
+    "net/http"
+    "time"
+    hyperliquid "github.com/sonirico/go-hyperliquid"
+)
+
+// Ultra high-throughput configuration
+client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL,
+    hyperliquid.ClientOptMaxIdleConns(1000),             // Maximum idle connections
+    hyperliquid.ClientOptMaxConnsPerHost(200),           // Very high per-host limit
+    hyperliquid.ClientOptMaxIdleConnsPerHost(100),       // Maximum idle per host
+    hyperliquid.ClientOptIdleConnTimeout(120*time.Second), // Longer keep-alive
+    hyperliquid.ClientOptRequestTimeout(15*time.Second),   // Faster timeout
+    hyperliquid.ClientOptDialTimeout(5*time.Second),       // Quick connection
+)
+
+// Low-latency configuration
+client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL,
+    hyperliquid.ClientOptMaxConnsPerHost(10),            // Fewer connections
+    hyperliquid.ClientOptRequestTimeout(5*time.Second),   // Very fast timeout
+    hyperliquid.ClientOptDialTimeout(2*time.Second),      // Quick dial
+)
+
+// Custom HTTP client for advanced use cases
+customClient := &http.Client{
+    Transport: &http.Transport{
+        MaxIdleConns: 500,
+        // ... other custom settings
+    },
+}
+client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL,
+    hyperliquid.ClientOptHTTPClient(customClient),
+)
+```
+
+### HTTP Configuration Options
+
+| Option | Purpose | Default | Recommended Range |
+|--------|---------|---------|-------------------|
+| `ClientOptMaxIdleConns` | Total idle connections | 500 | 200-1000 |
+| `ClientOptMaxConnsPerHost` | Max connections per host | 100 | 50-200 |
+| `ClientOptMaxIdleConnsPerHost` | Idle connections per host | 50 | 20-100 |
+| `ClientOptIdleConnTimeout` | Keep-alive duration | 90s | 30-300s |
+| `ClientOptRequestTimeout` | Total request timeout | 30s | 5-60s |
+| `ClientOptDialTimeout` | Connection dial timeout | 10s | 2-30s |
 
 ## Health Monitoring
 
@@ -174,6 +243,34 @@ The library automatically uses high-performance EasyJSON for:
 | Trade Unmarshal | 1402 ns/op | 430.6 ns/op | 3.3x faster |
 | OrderStatus Marshal | 514.0 ns/op | 82.7 ns/op | 6.2x faster |
 | Position Marshal | 1398 ns/op | 347.7 ns/op | 4.0x faster |
+| UserState Marshal | 3064 ns/op | 575.8 ns/op | 5.3x faster |
+
+## Comprehensive Benchmark Results
+
+### JSON Operations Performance
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| **Trade Marshal** | 903.5 ns/op, 384 B/op | 153.7 ns/op, 128 B/op | 5.9x faster, 3x less memory |
+| **Trade Unmarshal** | 1402 ns/op, 400 B/op | 430.6 ns/op, 96 B/op | 3.3x faster, 4.2x less memory |
+| **OrderStatus Marshal** | 514.0 ns/op, 232 B/op | 82.7 ns/op, 128 B/op | 6.2x faster, 1.8x less memory |
+| **Position Marshal** | 1398 ns/op, 1137 B/op | 347.7 ns/op, 784 B/op | 4.0x faster, 1.4x less memory |
+| **UserState Marshal** | 3064 ns/op, 1931 B/op | 575.8 ns/op, 1176 B/op | 5.3x faster, 1.6x less memory |
+
+### WebSocket Operations Performance
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| **Message Processing** | 1737 ns/op, 384 B/op | 734.2 ns/op, 136 B/op | 2.4x faster, 2.8x less memory |
+| **API Response Parsing** | 3310 ns/op, 3400 B/op | 303.8 ns/op, 0 B/op | 10.9x faster, ∞ less memory |
+
+### Concurrency Operations Performance
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| **Subscriber Access** | 580.6 ns/op, 0 B/op | 502.1 ns/op, 0 B/op | 13.5% faster |
+| **Counter Operations** | 7.978 ns/op, 0 B/op | 4.218 ns/op, 0 B/op | 89% faster |
+| **Concurrent Ops** | 7362 ns/op, 1523 B/op | 6288 ns/op, 1523 B/op | 17% faster |
 
 ## Error Handling Best Practices
 
@@ -258,19 +355,31 @@ go func() {
 ## Production Recommendations
 
 ### High-Frequency Trading
-- Use `WsOptAsyncCallbacks(true)` to prevent blocking
-- Set `WsOptBatchSize(20-50)` for optimal throughput
+- **WebSocket**: Use `WsOptAsyncCallbacks(true)` to prevent blocking
+- **WebSocket**: Set `WsOptBatchSize(20-50)` for optimal throughput
+- **HTTP**: Use `ClientOptMaxConnsPerHost(100-200)` for high API usage
+- **HTTP**: Set `ClientOptRequestTimeout(5-15s)` for fast responses
 - Monitor connection health continuously
 - Implement custom retry logic if needed
 
 ### Market Data Processing
-- Use larger batch sizes for better throughput
-- Enable async callbacks for data analysis
+- **WebSocket**: Use larger batch sizes for better throughput
+- **WebSocket**: Enable async callbacks for data analysis
+- **HTTP**: Use default connection pooling settings (already optimized)
+- **HTTP**: Consider `ClientOptIdleConnTimeout(120s)` for longer sessions
 - Implement proper error handling for data gaps
 
 ### Resource-Constrained Environments
-- Use smaller buffer sizes to limit memory usage
-- Disable batching for immediate processing
-- Set lower reconnection attempt limits
+- **WebSocket**: Use smaller buffer sizes to limit memory usage
+- **WebSocket**: Disable batching for immediate processing
+- **WebSocket**: Set lower reconnection attempt limits
+- **HTTP**: Reduce `ClientOptMaxIdleConns(100-200)` to save memory
+- **HTTP**: Lower `ClientOptMaxConnsPerHost(20-50)` for conservative usage
+
+### Latency-Critical Applications
+- **WebSocket**: Use `WsOptBatchSize(1)` for immediate processing
+- **WebSocket**: Set `WsOptBatchTimeout(1ms)` for minimal delay
+- **HTTP**: Use `ClientOptDialTimeout(2-5s)` for quick connections
+- **HTTP**: Set `ClientOptRequestTimeout(5-10s)` for fast timeouts
 
 The library's performance optimizations are designed to work automatically while providing fine-grained control when needed.
