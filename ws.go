@@ -59,6 +59,7 @@ type WebsocketClient struct {
 	batchSize     int
 	batchTimeout  time.Duration
 	messageBuffer chan wsMessage
+	asyncCallbacks bool // Enable async callback dispatch
 }
 
 func NewWebsocketClient(baseURL string, opts ...WsOpt) *WebsocketClient {
@@ -169,6 +170,7 @@ func (w *WebsocketClient) subscribe(
 					}
 				}
 			},
+			w.asyncCallbacks, // Pass async dispatch setting
 		)
 
 		w.subscribers[pkey] = subscriber

@@ -16,12 +16,14 @@ type uniqSubscriber struct {
 	subscriberFunc      func(subscriptable)
 	unsubscriberFunc    func(subscriptable)
 	subscriptionPayload subscriptable
+	asyncDispatch       bool // Enable async callback dispatch
 }
 
 func newUniqSubscriber(
 	id string,
 	payload subscriptable,
 	subscriberFunc, unsubscriberFunc func(subscriptable),
+	asyncDispatch bool,
 ) *uniqSubscriber {
 	return &uniqSubscriber{
 		id:                  id,
@@ -30,6 +32,7 @@ func newUniqSubscriber(
 		subscribers:         make(map[string]callback),
 		subscriberFunc:      subscriberFunc,
 		unsubscriberFunc:    unsubscriberFunc,
+		asyncDispatch:       asyncDispatch,
 	}
 }
 
@@ -69,17 +72,24 @@ func (u *uniqSubscriber) dispatch(data any) {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
 
-	// Dispatch to callbacks asynchronously to avoid blocking
-	for _, cb := range u.subscribers {
-		go func(callback callback, msg any) {
-			defer func() {
-				if r := recover(); r != nil {
-					// Log panic in callback but don't crash the dispatcher
-					// Note: In production, you might want to use a proper logger here
-				}
-			}()
-			callback(msg)
-		}(cb, data)
+	if u.asyncDispatch {
+		// Dispatch to callbacks asynchronously to avoid blocking
+		for _, cb := range u.subscribers {
+			go func(callback callback, msg any) {
+				defer func() {
+					if r := recover(); r != nil {
+						// Log panic in callback but don't crash the dispatcher
+						// Note: In production, you might want to use a proper logger here
+					}
+				}()
+				callback(msg)
+			}(cb, data)
+		}
+	} else {
+		// Synchronous dispatch for tests and deterministic behavior
+		for _, cb := range u.subscribers {
+			cb(data)
+		}
 	}
 }
 

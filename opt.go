@@ -80,3 +80,12 @@ func WsOptBufferSize(size int) WsOpt {
 		}
 	}
 }
+
+// WsOptAsyncCallbacks enables asynchronous callback dispatch for better performance
+func WsOptAsyncCallbacks(enabled bool) WsOpt {
+	return func(w *WebsocketClient) {
+		// Note: This will be applied to new subscribers created after this option
+		// Existing subscribers retain their current dispatch mode
+		w.asyncCallbacks = enabled
+	}
+}

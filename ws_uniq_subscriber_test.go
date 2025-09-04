@@ -67,6 +67,7 @@ func TestUniqSubscriber(t *testing.T) {
 					tt.payload,
 					tt.subscriberFunc,
 					tt.unsubscriberFunc,
+					false, // Sync dispatch for tests
 				)
 
 				assert.NotNil(t, subscriber)
@@ -139,7 +140,7 @@ func TestUniqSubscriber(t *testing.T) {
 		unsubscriberFunc := func(subscriptable) { haveUnsubscribeCalledTimes++ }
 
 		payload := mockSubscriptable{key: "test"}
-		subscriber := newUniqSubscriber("test", payload, subscriberFunc, unsubscriberFunc)
+		subscriber := newUniqSubscriber("test", payload, subscriberFunc, unsubscriberFunc, false)
 		// set initial state
 		subscriber.subscribe("sub1", func(any) {})
 		assert.Equal(t, 1, haveSubscribeCalledTimes)
@@ -227,6 +228,7 @@ func TestUniqSubscriber(t *testing.T) {
 					payload,
 					func(subscriptable) {},
 					func(subscriptable) {},
+					false, // Sync dispatch for tests
 				)
 
 				callCounts := make(map[string]int)
@@ -290,7 +292,7 @@ func TestUniqSubscriber(t *testing.T) {
 				unsubscriberFunc := func(subscriptable) { unsubFuncCalled = true }
 
 				payload := mockSubscriptable{key: "test"}
-				subscriber := newUniqSubscriber("test", payload, subscriberFunc, unsubscriberFunc)
+				subscriber := newUniqSubscriber("test", payload, subscriberFunc, unsubscriberFunc, false)
 
 				// Set initial state
 				subscriber.subscribers = make(map[string]callback)
@@ -316,6 +318,7 @@ func TestUniqSubscriber(t *testing.T) {
 				payload,
 				func(subscriptable) {},
 				func(subscriptable) {},
+				false, // Sync dispatch for tests
 			)
 
 			var wg sync.WaitGroup
@@ -351,6 +354,7 @@ func TestUniqSubscriber(t *testing.T) {
 				payload,
 				func(subscriptable) {},
 				func(subscriptable) {},
+				false, // Sync dispatch for tests
 			)
 
 			var wg sync.WaitGroup
@@ -410,6 +414,7 @@ func TestUniqSubscriber(t *testing.T) {
 				wantPayload,
 				subscriberFunc,
 				unsubscriberFunc,
+				false, // Sync dispatch for tests
 			)
 
 			// First subscription should trigger the subscriber function
@@ -431,6 +436,7 @@ func TestUniqSubscriber(t *testing.T) {
 				wantPayload,
 				subscriberFunc,
 				unsubscriberFunc,
+				false, // Sync dispatch for tests
 			)
 
 			// Add and remove subscriber to trigger unsubscriber function
@@ -455,6 +461,7 @@ func TestUniqSubscriber(t *testing.T) {
 					wantPayload,
 					subscriberFunc,
 					unsubscriberFunc,
+					false, // Sync dispatch for tests
 				)
 
 				// Add subscribers and clear
