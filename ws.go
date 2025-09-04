@@ -408,7 +408,10 @@ func (w *WebsocketClient) reconnect(ctx context.Context) {
 			attempts := w.reconnectAttempts.Load()
 			if attempts >= w.maxReconnectAttempts {
 				if w.logger != nil {
-					w.logger.Errorf("max reconnection attempts reached (%d), giving up", w.maxReconnectAttempts)
+					w.logger.Errorf(
+						"max reconnection attempts reached (%d), giving up",
+						w.maxReconnectAttempts,
+					)
 				}
 				return
 			}

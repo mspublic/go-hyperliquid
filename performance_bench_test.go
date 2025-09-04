@@ -18,7 +18,9 @@ import (
 // BenchmarkWebSocketMessageProcessing benchmarks the WebSocket message processing
 // with and without object pooling
 func BenchmarkWebSocketMessageProcessing(b *testing.B) {
-	sampleMessage := []byte(`{"channel":"trades","data":{"coin":"BTC","side":"B","px":"50000.0","sz":"0.1","time":1640995200000,"hash":"abc123","tid":12345,"users":["user1","user2"]}}`)
+	sampleMessage := []byte(
+		`{"channel":"trades","data":{"coin":"BTC","side":"B","px":"50000.0","sz":"0.1","time":1640995200000,"hash":"abc123","tid":12345,"users":["user1","user2"]}}`,
+	)
 
 	b.Run("WithoutPool", func(b *testing.B) {
 		b.ResetTimer()
@@ -288,10 +290,10 @@ func BenchmarkOrderWirePoolUsage(b *testing.B) {
 	orders := make([]CreateOrderRequest, 10)
 	for i := range orders {
 		orders[i] = CreateOrderRequest{
-			Coin:     "BTC",
-			IsBuy:    true,
-			Price:    50000.0,
-			Size:     0.1,
+			Coin:      "BTC",
+			IsBuy:     true,
+			Price:     50000.0,
+			Size:      0.1,
 			OrderType: OrderType{Limit: &LimitOrderType{Tif: "Gtc"}},
 		}
 	}
@@ -315,7 +317,7 @@ func BenchmarkOrderWirePoolUsage(b *testing.B) {
 				return &slice
 			},
 		}
-		
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			// Pool-based allocation (current implementation)
@@ -325,11 +327,11 @@ func BenchmarkOrderWirePoolUsage(b *testing.B) {
 			}
 			*orderRequestsPtr = (*orderRequestsPtr)[:len(orders)]
 			orderRequests := *orderRequestsPtr
-			
+
 			for j := range orders {
 				orderRequests[j] = OrderWire{} // Simulate usage
 			}
-			
+
 			*orderRequestsPtr = (*orderRequestsPtr)[:0]
 			pool.Put(orderRequestsPtr)
 		}
@@ -516,7 +518,13 @@ func BenchmarkWebSocketOptimizations(b *testing.B) {
 	for i := range messages {
 		messages[i] = wsMessage{
 			Channel: "trades",
-			Data:    []byte(fmt.Sprintf(`{"coin":"BTC","side":"B","px":"50000.%d","sz":"0.1","time":%d}`, i, time.Now().UnixNano())),
+			Data: []byte(
+				fmt.Sprintf(
+					`{"coin":"BTC","side":"B","px":"50000.%d","sz":"0.1","time":%d}`,
+					i,
+					time.Now().UnixNano(),
+				),
+			),
 		}
 	}
 

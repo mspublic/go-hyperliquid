@@ -66,7 +66,10 @@ func TestConfigurationValidation(t *testing.T) {
 		// Test invalid value (too large)
 		WsOptMaxReconnectAttempts(MaxReconnectAttempts + 1).Apply(ws)
 		if ws.maxReconnectAttempts != 20 { // Should remain unchanged
-			t.Errorf("Max attempts should not change for invalid input, got %d", ws.maxReconnectAttempts)
+			t.Errorf(
+				"Max attempts should not change for invalid input, got %d",
+				ws.maxReconnectAttempts,
+			)
 		}
 
 		// Reset for other tests

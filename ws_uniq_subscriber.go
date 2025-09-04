@@ -77,7 +77,8 @@ func (u *uniqSubscriber) dispatch(data any) {
 				defer func() {
 					if r := recover(); r != nil {
 						// Log panic in callback but don't crash the dispatcher
-						// Note: In production, you might want to use a proper logger here
+						// In production, this should be logged properly
+						_ = r // Acknowledge the panic but continue
 					}
 				}()
 				callback(msg)

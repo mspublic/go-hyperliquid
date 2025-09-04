@@ -147,7 +147,11 @@ func (c *Client) post(path string, payload any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil && c.debug {
+			c.logger.WithFields(lol.Fields{"error": closeErr}).Debug("Failed to close response body")
+		}
+	}()
 
 	var body []byte
 	if resp.Body != nil {

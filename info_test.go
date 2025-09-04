@@ -19,17 +19,17 @@ func TestMetaAndAssetCtxs(t *testing.T) {
 
 	// Verify the response structure
 	require.NotNil(t, res)
-	require.NotNil(t, res.Meta.Universe)
-	require.NotNil(t, res.Meta.MarginTables)
+	require.NotNil(t, res.Universe)
+	require.NotNil(t, res.MarginTables)
 	require.NotNil(t, res.Ctxs)
 
 	// Verify we have at least one asset in universe
-	require.Greater(t, len(res.Meta.Universe), 0)
-	require.NotEmpty(t, res.Meta.Universe[0].Name)
+	require.Greater(t, len(res.Universe), 0)
+	require.NotEmpty(t, res.Universe[0].Name)
 
 	// Test specific known assets from the cassette data
 	var btcFound, ethFound bool
-	for _, asset := range res.Meta.Universe {
+	for _, asset := range res.Universe {
 		if asset.Name == "BTC" {
 			btcFound = true
 			require.Equal(t, 5, asset.SzDecimals)
@@ -43,14 +43,14 @@ func TestMetaAndAssetCtxs(t *testing.T) {
 	require.True(t, ethFound, "ETH asset should be present in universe")
 
 	// Verify we have at least one margin table
-	require.Greater(t, len(res.Meta.MarginTables), 0)
-	require.GreaterOrEqual(t, res.Meta.MarginTables[0].ID, 0)
+	require.Greater(t, len(res.MarginTables), 0)
+	require.GreaterOrEqual(t, res.MarginTables[0].ID, 0)
 
 	// Verify we have at least one margin tier
-	require.Greater(t, len(res.Meta.MarginTables[0].MarginTiers), 0)
+	require.Greater(t, len(res.MarginTables[0].MarginTiers), 0)
 
 	// Test specific margin table structure
-	for _, marginTable := range res.Meta.MarginTables {
+	for _, marginTable := range res.MarginTables {
 		require.NotNil(t, marginTable)
 		require.Greater(t, len(marginTable.MarginTiers), 0)
 		for _, tier := range marginTable.MarginTiers {

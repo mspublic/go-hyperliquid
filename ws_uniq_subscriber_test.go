@@ -292,7 +292,13 @@ func TestUniqSubscriber(t *testing.T) {
 				unsubscriberFunc := func(subscriptable) { unsubFuncCalled = true }
 
 				payload := mockSubscriptable{key: "test"}
-				subscriber := newUniqSubscriber("test", payload, subscriberFunc, unsubscriberFunc, false)
+				subscriber := newUniqSubscriber(
+					"test",
+					payload,
+					subscriberFunc,
+					unsubscriberFunc,
+					false,
+				)
 
 				// Set initial state
 				subscriber.subscribers = make(map[string]callback)

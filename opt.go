@@ -170,7 +170,8 @@ func ClientOptMaxConnsPerHost(maxConnsPerHost int) ClientOpt {
 // Recommended: 5-20 depending on request frequency to each host.
 func ClientOptMaxIdleConnsPerHost(maxIdleConnsPerHost int) ClientOpt {
 	return func(c *Client) {
-		if transport, ok := c.httpClient.Transport.(*http.Transport); ok && maxIdleConnsPerHost > 0 {
+		if transport, ok := c.httpClient.Transport.(*http.Transport); ok &&
+			maxIdleConnsPerHost > 0 {
 			transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
 		}
 	}
