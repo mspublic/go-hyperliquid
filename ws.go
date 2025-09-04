@@ -56,9 +56,9 @@ type WebsocketClient struct {
 	logger                lol.Logger
 
 	// Message batching for high-frequency scenarios
-	batchSize     int
-	batchTimeout  time.Duration
-	messageBuffer chan wsMessage
+	batchSize      int
+	batchTimeout   time.Duration
+	messageBuffer  chan wsMessage
 	asyncCallbacks bool // Enable async callback dispatch
 }
 
