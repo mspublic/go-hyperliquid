@@ -149,7 +149,8 @@ func (c *Client) post(path string, payload any) ([]byte, error) {
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil && c.debug {
-			c.logger.WithFields(lol.Fields{"error": closeErr}).Debug("Failed to close response body")
+			c.logger.WithFields(lol.Fields{"error": closeErr}).
+				Debug("Failed to close response body")
 		}
 	}()
 

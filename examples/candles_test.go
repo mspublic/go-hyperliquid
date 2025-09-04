@@ -10,7 +10,7 @@ import (
 )
 
 func TestCandlesSnapshot(t *testing.T) {
-	godotenv.Overload()
+	_ = godotenv.Overload()
 	info := hyperliquid.NewInfo(hyperliquid.MainnetAPIURL, true, nil, nil)
 
 	now := time.Now()

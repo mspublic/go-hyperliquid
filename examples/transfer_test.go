@@ -8,7 +8,7 @@ import (
 )
 
 func TestUsdTransfer(t *testing.T) {
-	godotenv.Overload()
+	_ = godotenv.Overload()
 	exchange := newTestExchange(t) // exchange used for setup only
 
 	// Example destination address (replace with actual test address)
@@ -31,7 +31,7 @@ func TestUsdTransfer(t *testing.T) {
 }
 
 func TestSpotTransfer(t *testing.T) {
-	godotenv.Overload()
+	_ = godotenv.Overload()
 	exchange := newTestExchange(t) // exchange used for setup only
 
 	// Skip if running in CI or without proper credentials
@@ -59,7 +59,7 @@ func TestSpotTransfer(t *testing.T) {
 }
 
 func TestUsdClassTransfer(t *testing.T) {
-	godotenv.Overload()
+	_ = godotenv.Overload()
 	exchange := newTestExchange(t) // exchange used for setup only
 
 	// Skip if running in CI or without proper credentials
@@ -85,7 +85,7 @@ func TestUsdClassTransfer(t *testing.T) {
 }
 
 func TestSetReferrer(t *testing.T) {
-	godotenv.Overload()
+	_ = godotenv.Overload()
 	exchange := newTestExchange(t) // exchange used for setup only
 
 	// Skip if running in CI or without proper credentials
@@ -110,7 +110,7 @@ func TestSetReferrer(t *testing.T) {
 }
 
 func TestCreateSubAccount(t *testing.T) {
-	godotenv.Overload()
+	_ = godotenv.Overload()
 	exchange := newTestExchange(t) // exchange used for setup only
 
 	// Skip if running in CI or without proper credentials
@@ -135,7 +135,7 @@ func TestCreateSubAccount(t *testing.T) {
 }
 
 func TestApproveAgent(t *testing.T) {
-	godotenv.Overload()
+	_ = godotenv.Overload()
 	exchange := newTestExchange(t) // exchange used for setup only
 
 	// Skip if running in CI or without proper credentials
