@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// recordForDebug can be set to true to force recording of all test interactions
+// for debugging purposes, overriding individual test case record settings
 var recordForDebug = true
 
 func TestCancelByCloid(t *testing.T) {
@@ -78,7 +80,7 @@ func TestCancelByCloid(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(tt *testing.T) {
 			log.Printf("name: %s", tc.name)
-			initRecorder(tt, tc.record, tc.cassetteName)
+			initRecorder(tt, tc.record || recordForDebug, tc.cassetteName)
 
 			exchange, err := newExchange(
 				"0x38d55ff1195c57b9dbc8a72c93119500f1fcd47a33f98149faa18d2fc37932fa",
@@ -181,7 +183,7 @@ func TestCancel(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(tt *testing.T) {
-			initRecorder(tt, tc.record, tc.cassetteName)
+			initRecorder(tt, tc.record || recordForDebug, tc.cassetteName)
 
 			exchange, err := newExchange(
 				"0x38d55ff1195c57b9dbc8a72c93119500f1fcd47a33f98149faa18d2fc37932fa",

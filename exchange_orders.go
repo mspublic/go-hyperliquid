@@ -87,7 +87,7 @@ func newCreateOrderAction(
 		*orderRequestsPtr = (*orderRequestsPtr)[:0]
 		orderWirePool.Put(orderRequestsPtr)
 	}()
-	
+
 	// Ensure sufficient capacity
 	if cap(*orderRequestsPtr) < len(orders) {
 		*orderRequestsPtr = make([]OrderWire, 0, len(orders))
