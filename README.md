@@ -75,14 +75,22 @@ import (
     "context"
     "fmt"
     "log"
+    "time"
 
     "github.com/ethereum/go-ethereum/crypto"
     hyperliquid "github.com/sonirico/go-hyperliquid"
 )
 
 func main() {
-    // Initialize client
+    // Initialize client with default optimized HTTP connection pooling
     client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL)
+
+    // Or configure even higher limits for extreme high-performance scenarios
+    client = hyperliquid.NewClient(hyperliquid.MainnetAPIURL,
+        hyperliquid.ClientOptMaxIdleConns(1000),       // Maximum connections for ultra-high throughput
+        hyperliquid.ClientOptMaxConnsPerHost(200),     // Very high per-host limit
+        hyperliquid.ClientOptRequestTimeout(15*time.Second), // Faster timeout
+    )
 
     // For trading, create an Exchange with your private key
     privateKey, _ := crypto.HexToECDSA("your-private-key")
@@ -133,6 +141,51 @@ func main() {
 ## Performance Configuration
 
 The library includes advanced performance optimizations that can be configured for your specific use case:
+
+### HTTP Client Performance Tuning
+
+The library uses optimized HTTP connection pooling by default, but you can customize it for your specific needs:
+
+```go
+// Ultra high-throughput configuration for intensive trading applications
+client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL,
+    hyperliquid.ClientOptMaxIdleConns(1000),             // Maximum idle connections
+    hyperliquid.ClientOptMaxConnsPerHost(200),           // Very high per-host limit  
+    hyperliquid.ClientOptMaxIdleConnsPerHost(100),       // Maximum idle per host
+    hyperliquid.ClientOptIdleConnTimeout(120*time.Second), // Longer keep-alive
+    hyperliquid.ClientOptRequestTimeout(15*time.Second),   // Faster timeout
+    hyperliquid.ClientOptDialTimeout(5*time.Second),       // Quick connection
+)
+
+// Low-latency configuration for real-time trading
+client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL,
+    hyperliquid.ClientOptMaxConnsPerHost(10),            // Fewer connections
+    hyperliquid.ClientOptRequestTimeout(5*time.Second),   // Very fast timeout
+    hyperliquid.ClientOptDialTimeout(2*time.Second),      // Quick dial
+)
+
+// Custom HTTP client for advanced use cases
+customClient := &http.Client{
+    Transport: &http.Transport{
+        MaxIdleConns: 500,
+        // ... other custom settings
+    },
+}
+client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL,
+    hyperliquid.ClientOptHTTPClient(customClient),
+)
+```
+
+#### HTTP Configuration Options
+
+| Option | Purpose | Default | Recommended Range |
+|--------|---------|---------|-------------------|
+| `ClientOptMaxIdleConns` | Total idle connections | 500 | 200-1000 |
+| `ClientOptMaxConnsPerHost` | Max connections per host | 100 | 50-200 |
+| `ClientOptMaxIdleConnsPerHost` | Idle connections per host | 50 | 20-100 |
+| `ClientOptIdleConnTimeout` | Keep-alive duration | 90s | 30-300s |
+| `ClientOptRequestTimeout` | Total request timeout | 30s | 5-60s |
+| `ClientOptDialTimeout` | Connection dial timeout | 10s | 2-30s |
 
 ### WebSocket Performance Tuning
 
@@ -251,13 +304,13 @@ make ci-test
 - [x] **Monitoring and observability features**
 - [x] **Order management**
 - [x] **User account operations**
+- [x] **HTTP connection pooling** - Optimized HTTP transport with configurable connection pooling
 
 ### 🎯 Future Enhancements
 
 - [ ] Advanced order types
 - [ ] Historical data API  
 - [ ] Rate limiting improvements
-- [ ] HTTP connection pooling
 
 ## License
 

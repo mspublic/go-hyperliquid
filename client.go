@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/sonirico/vago/lol"
 )
@@ -27,6 +29,14 @@ const (
 	defaultBufferCapacity          = 4096        // 4KB for request buffers
 	defaultResponseCapacity        = 8192        // 8KB for response buffers
 	maxResponseSizeForOptimization = 1024 * 1024 // 1MB max for pre-allocation
+
+	// HTTP connection pooling defaults - optimized for high-frequency trading
+	defaultMaxIdleConns        = 1000             // Maximum idle connections across all hosts
+	defaultMaxConnsPerHost     = 100              // Maximum connections per host
+	defaultMaxIdleConnsPerHost = 50               // Maximum idle connections per host
+	defaultIdleConnTimeout     = 90 * time.Second // How long an idle connection is kept alive
+	defaultDialTimeout         = 10 * time.Second // Connection dial timeout
+	defaultRequestTimeout      = 30 * time.Second // Overall request timeout
 )
 
 // bufferPool reduces allocations for HTTP request/response buffers
@@ -44,6 +54,29 @@ var responseBufferPool = sync.Pool{
 	},
 }
 
+// createOptimizedHTTPClient creates an HTTP client optimized for trading applications
+// with connection pooling, appropriate timeouts, and performance tuning.
+func createOptimizedHTTPClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout: defaultDialTimeout,
+	}
+
+	transport := &http.Transport{
+		MaxIdleConns:        defaultMaxIdleConns,
+		MaxConnsPerHost:     defaultMaxConnsPerHost,
+		MaxIdleConnsPerHost: defaultMaxIdleConnsPerHost,
+		IdleConnTimeout:     defaultIdleConnTimeout,
+		DisableCompression:  false, // Enable compression for API responses
+		ForceAttemptHTTP2:   true,  // Use HTTP/2 when possible for better performance
+		DialContext:         dialer.DialContext,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   defaultRequestTimeout,
+	}
+}
+
 type Client struct {
 	logger     lol.Logger
 	debug      bool
@@ -52,13 +85,14 @@ type Client struct {
 }
 
 // NewClient creates a new HTTP client for the Hyperliquid API.
-// The client is configured with sensible defaults and can be customized using ClientOpt functions.
+// The client is configured with sensible defaults including connection pooling
+// and can be customized using ClientOpt functions.
 //
 // Parameters:
 //   - baseURL: The base URL for the API (use MainnetAPIURL, TestnetAPIURL, or custom URL)
 //   - opts: Optional configuration functions to customize the client behavior
 //
-// Returns a configured Client ready for API operations.
+// Returns a configured Client ready for API operations with optimized HTTP transport.
 func NewClient(baseURL string, opts ...ClientOpt) *Client {
 	if baseURL == "" {
 		baseURL = MainnetAPIURL
@@ -66,7 +100,7 @@ func NewClient(baseURL string, opts ...ClientOpt) *Client {
 
 	cli := &Client{
 		baseURL:    baseURL,
-		httpClient: new(http.Client),
+		httpClient: createOptimizedHTTPClient(),
 	}
 
 	for _, opt := range opts {

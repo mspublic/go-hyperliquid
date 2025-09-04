@@ -1,6 +1,8 @@
 package hyperliquid
 
 import (
+	"net"
+	"net/http"
 	"os"
 	"time"
 
@@ -122,6 +124,93 @@ func WsOptMaxReconnectAttempts(maxAttempts int64) WsOpt {
 	return func(w *WebsocketClient) {
 		if maxAttempts > 0 && maxAttempts <= MaxReconnectAttempts {
 			w.maxReconnectAttempts = maxAttempts
+		}
+	}
+}
+
+// ClientOptHTTPClient allows setting a custom HTTP client for the API client.
+// This gives full control over HTTP transport settings including connection pooling,
+// timeouts, proxy settings, and TLS configuration.
+// By default, the client uses an optimized HTTP client with connection pooling.
+func ClientOptHTTPClient(httpClient *http.Client) ClientOpt {
+	return func(c *Client) {
+		if httpClient != nil {
+			c.httpClient = httpClient
+		}
+	}
+}
+
+// ClientOptMaxIdleConns configures the maximum number of idle connections
+// across all hosts. Higher values allow better connection reuse but consume more memory.
+// Default: 100 connections.
+// Recommended: 50-200 depending on expected concurrent usage.
+func ClientOptMaxIdleConns(maxIdleConns int) ClientOpt {
+	return func(c *Client) {
+		if transport, ok := c.httpClient.Transport.(*http.Transport); ok && maxIdleConns > 0 {
+			transport.MaxIdleConns = maxIdleConns
+		}
+	}
+}
+
+// ClientOptMaxConnsPerHost configures the maximum number of connections per host.
+// This limits concurrent connections to prevent overwhelming the target server.
+// Default: 20 connections per host.
+// Recommended: 10-50 depending on server capacity and usage patterns.
+func ClientOptMaxConnsPerHost(maxConnsPerHost int) ClientOpt {
+	return func(c *Client) {
+		if transport, ok := c.httpClient.Transport.(*http.Transport); ok && maxConnsPerHost > 0 {
+			transport.MaxConnsPerHost = maxConnsPerHost
+		}
+	}
+}
+
+// ClientOptMaxIdleConnsPerHost configures the maximum number of idle connections per host.
+// This balances connection reuse with memory usage for each target host.
+// Default: 10 idle connections per host.
+// Recommended: 5-20 depending on request frequency to each host.
+func ClientOptMaxIdleConnsPerHost(maxIdleConnsPerHost int) ClientOpt {
+	return func(c *Client) {
+		if transport, ok := c.httpClient.Transport.(*http.Transport); ok && maxIdleConnsPerHost > 0 {
+			transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
+		}
+	}
+}
+
+// ClientOptIdleConnTimeout configures how long idle connections are kept alive.
+// Longer timeouts improve connection reuse but consume server resources.
+// Default: 90 seconds.
+// Recommended: 30-300 seconds depending on request patterns and server policies.
+func ClientOptIdleConnTimeout(timeout time.Duration) ClientOpt {
+	return func(c *Client) {
+		if transport, ok := c.httpClient.Transport.(*http.Transport); ok && timeout > 0 {
+			transport.IdleConnTimeout = timeout
+		}
+	}
+}
+
+// ClientOptRequestTimeout configures the overall timeout for HTTP requests.
+// This includes connection establishment, request sending, and response reading.
+// Default: 30 seconds.
+// Recommended: 10-60 seconds depending on expected response times and network conditions.
+func ClientOptRequestTimeout(timeout time.Duration) ClientOpt {
+	return func(c *Client) {
+		if timeout > 0 {
+			c.httpClient.Timeout = timeout
+		}
+	}
+}
+
+// ClientOptDialTimeout configures the timeout for establishing new connections.
+// This affects how long to wait when connecting to the server.
+// Default: 10 seconds.
+// Recommended: 5-30 seconds depending on network conditions and requirements.
+func ClientOptDialTimeout(timeout time.Duration) ClientOpt {
+	return func(c *Client) {
+		if transport, ok := c.httpClient.Transport.(*http.Transport); ok && timeout > 0 {
+			dialer := &net.Dialer{
+				Timeout: timeout,
+			}
+			transport.DialContext = dialer.DialContext
 		}
 	}
 }
