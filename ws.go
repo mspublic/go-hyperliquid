@@ -153,7 +153,9 @@ func (w *WebsocketClient) subscribe(
 			// on subscribe
 			func(p subscriptable) {
 				if err := w.sendSubscribe(p); err != nil {
-					w.logger.Errorf("failed to subscribe: %v", err)
+					if w.logger != nil {
+						w.logger.Errorf("failed to subscribe: %v", err)
+					}
 				}
 			},
 			// on unsubscribe
@@ -162,7 +164,9 @@ func (w *WebsocketClient) subscribe(
 				defer w.mu.Unlock()
 				delete(w.subscribers, pkey)
 				if err := w.sendUnsubscribe(p); err != nil {
-					w.logger.Errorf("failed to unsubscribe: %v", err)
+					if w.logger != nil {
+						w.logger.Errorf("failed to unsubscribe: %v", err)
+					}
 				}
 			},
 		)
@@ -230,12 +234,14 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 			_, msg, err := w.conn.ReadMessage()
 			if err != nil {
 				if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-					w.logger.Errorf("websocket read error: %v", err)
+					if w.logger != nil {
+						w.logger.Errorf("websocket read error: %v", err)
+					}
 				}
 				return
 			}
 
-			if w.debug {
+			if w.debug && w.logger != nil {
 				w.logger.Debugf("[<] %s", string(msg))
 			}
 
@@ -244,7 +250,9 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 			wsMsg.Data = nil
 
 			if err := wsMsg.UnmarshalJSON(msg); err != nil {
-				w.logger.Errorf("websocket message parse error: %v", err)
+				if w.logger != nil {
+					w.logger.Errorf("websocket message parse error: %v", err)
+				}
 				wsMessagePool.Put(wsMsg) // Return to pool on error
 				continue
 			}
@@ -256,7 +264,9 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 			default:
 				// Buffer full, process immediately to avoid blocking
 				if err := w.dispatch(*wsMsg); err != nil {
-					w.logger.Errorf("failed to dispatch websocket message: %v", err)
+					if w.logger != nil {
+						w.logger.Errorf("failed to dispatch websocket message: %v", err)
+					}
 				}
 			}
 
@@ -277,7 +287,9 @@ func (w *WebsocketClient) pingPump(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := w.sendPing(); err != nil {
-				w.logger.Errorf("ping error: %v", err)
+				if w.logger != nil {
+					w.logger.Errorf("ping error: %v", err)
+				}
 				w.reconnect(ctx)
 				return
 			}
@@ -346,7 +358,9 @@ func (w *WebsocketClient) batchProcessor(ctx context.Context) {
 func (w *WebsocketClient) processBatch(batch []wsMessage) {
 	for _, msg := range batch {
 		if err := w.dispatch(msg); err != nil {
-			w.logger.Errorf("failed to dispatch batched message: %v", err)
+			if w.logger != nil {
+				w.logger.Errorf("failed to dispatch batched message: %v", err)
+			}
 		}
 	}
 }
@@ -406,7 +420,7 @@ func (w *WebsocketClient) writeJSON(v any) error {
 		return fmt.Errorf("connection closed")
 	}
 
-	if w.debug {
+	if w.debug && w.logger != nil {
 		bts, _ := json.Marshal(v)
 		w.logger.Debugf("[>] %s", string(bts))
 	}
