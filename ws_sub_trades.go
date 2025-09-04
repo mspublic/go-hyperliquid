@@ -1,9 +1,5 @@
 package hyperliquid
 
-import (
-	"fmt"
-)
-
 //go:generate easyjson -all
 
 type TradesSubscriptionParams struct {
@@ -22,7 +18,7 @@ func (w *WebsocketClient) Trades(
 	return w.subscribe(remotePayload, func(msg any) {
 		trades, ok := msg.(Trades)
 		if !ok {
-			callback(nil, fmt.Errorf("SubscribeToTrades invalid message type"))
+			callback(nil, ErrInvalidMessageType)
 			return
 		}
 

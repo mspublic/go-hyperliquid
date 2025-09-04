@@ -55,7 +55,7 @@ func floatToWire(x float64) (string, error) {
 	}
 
 	if math.Abs(parsed-x) >= 1e-12 {
-		return "", fmt.Errorf("float_to_wire causes rounding: %f", x)
+		return "", fmt.Errorf("%w: %f", ErrFloatRounding, x)
 	}
 
 	// Handle -0 case

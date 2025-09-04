@@ -1,7 +1,5 @@
 package hyperliquid
 
-import "fmt"
-
 //go:generate easyjson -all
 
 type L2BookSubscriptionParams struct {
@@ -24,7 +22,7 @@ func (w *WebsocketClient) L2Book(
 	return w.subscribe(remotePayload, func(msg any) {
 		orderbook, ok := msg.(L2Book)
 		if !ok {
-			callback(L2Book{}, fmt.Errorf("invalid message type"))
+			callback(L2Book{}, ErrInvalidMessageType)
 			return
 		}
 

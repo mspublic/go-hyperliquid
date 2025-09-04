@@ -89,3 +89,12 @@ func WsOptAsyncCallbacks(enabled bool) WsOpt {
 		w.asyncCallbacks = enabled
 	}
 }
+
+// WsOptMaxReconnectAttempts configures the maximum reconnection attempts
+func WsOptMaxReconnectAttempts(maxAttempts int64) WsOpt {
+	return func(w *WebsocketClient) {
+		if maxAttempts > 0 {
+			w.maxReconnectAttempts = maxAttempts
+		}
+	}
+}

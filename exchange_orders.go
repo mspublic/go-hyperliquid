@@ -133,7 +133,7 @@ func (e *Exchange) Order(
 
 	data := resp.Data
 	if len(data.Statuses) == 0 {
-		err = fmt.Errorf("no status for order: %s", resp.Err)
+		err = fmt.Errorf("%w: %s", ErrNoOrderStatus, resp.Err)
 		return
 	}
 
@@ -257,7 +257,7 @@ func (e *Exchange) ModifyOrder(
 
 	data := resp.Data
 	if len(data.Statuses) == 0 {
-		err = fmt.Errorf("no status for modified order: %s", resp.Err)
+		err = fmt.Errorf("%w: %s", ErrNoOrderStatus, resp.Err)
 		return
 	}
 
@@ -285,7 +285,7 @@ func (e *Exchange) BulkModifyOrders(
 
 	data := resp.Data
 	if len(data.Statuses) == 0 {
-		return nil, fmt.Errorf("no status for modified order: %s", resp.Err)
+		return nil, fmt.Errorf("%w: %s", ErrNoOrderStatus, resp.Err)
 	}
 
 	return data.Statuses, nil
@@ -376,5 +376,5 @@ func (e *Exchange) MarketClose(
 		}, builder)
 	}
 
-	return OrderStatus{}, fmt.Errorf("position not found for coin: %s", coin)
+	return OrderStatus{}, fmt.Errorf("%w for coin: %s", ErrPositionNotFound, coin)
 }

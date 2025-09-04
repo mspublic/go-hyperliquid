@@ -72,7 +72,7 @@ func TestUniqSubscriber(t *testing.T) {
 
 				assert.NotNil(t, subscriber)
 				assert.Equal(t, tt.wantID, subscriber.id)
-				assert.Equal(t, tt.wantCount, subscriber.count)
+				assert.Equal(t, tt.wantCount, subscriber.count.Load())
 				assert.NotNil(t, subscriber.subscribers)
 				assert.Empty(t, subscriber.subscribers)
 				assert.Equal(t, tt.wantPayloadKey, subscriber.subscriptionPayload.Key())
@@ -157,7 +157,7 @@ func TestUniqSubscriber(t *testing.T) {
 					t.Fatalf("unknown operation: %s", tt.op)
 				}
 
-				assert.Equal(t, tt.wantCount, subscriber.count)
+				assert.Equal(t, tt.wantCount, subscriber.count.Load())
 				assert.Len(t, subscriber.subscribers, tt.wantSubscriberLen)
 
 				if tt.op == "subscribe" {
@@ -245,7 +245,7 @@ func TestUniqSubscriber(t *testing.T) {
 				}
 
 				subscriber.subscribers = tt.subscribers
-				subscriber.count = int64(len(tt.subscribers))
+				subscriber.count.Store(int64(len(tt.subscribers)))
 
 				subscriber.dispatch(tt.data)
 
@@ -299,11 +299,11 @@ func TestUniqSubscriber(t *testing.T) {
 				for id, cb := range tt.initialSubscribers {
 					subscriber.subscribers[id] = cb
 				}
-				subscriber.count = int64(len(tt.initialSubscribers))
+				subscriber.count.Store(int64(len(tt.initialSubscribers)))
 
 				subscriber.clear()
 
-				assert.Equal(t, int64(0), subscriber.count)
+				assert.Equal(t, int64(0), subscriber.count.Load())
 				assert.Empty(t, subscriber.subscribers)
 				assert.Equal(t, tt.shouldCallUnsubFunc, unsubFuncCalled)
 			})
@@ -342,7 +342,7 @@ func TestUniqSubscriber(t *testing.T) {
 
 			// Verify final state is consistent
 			actualLen := len(subscriber.subscribers)
-			count := subscriber.count
+			count := subscriber.count.Load()
 			assert.Equal(t, actualLen, 0)
 			assert.True(t, count == 0)
 		})

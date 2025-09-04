@@ -2,6 +2,7 @@ package hyperliquid
 
 import (
 	"sync"
+	"sync/atomic"
 )
 
 type callback func(any)
@@ -10,8 +11,8 @@ type callback func(any)
 // in sync with the latest data.
 type uniqSubscriber struct {
 	mu                  sync.RWMutex
-	id                  string // trades:<coin>, ...
-	count               int64
+	id                  string       // trades:<coin>, ...
+	count               atomic.Int64 // Use atomic for lock-free counter
 	subscribers         map[string]callback
 	subscriberFunc      func(subscriptable)
 	unsubscriberFunc    func(subscriptable)
@@ -28,7 +29,6 @@ func newUniqSubscriber(
 	return &uniqSubscriber{
 		id:                  id,
 		subscriptionPayload: payload,
-		count:               0,
 		subscribers:         make(map[string]callback),
 		subscriberFunc:      subscriberFunc,
 		unsubscriberFunc:    unsubscriberFunc,
@@ -43,8 +43,7 @@ func (u *uniqSubscriber) subscribe(id string, cb callback) {
 		return
 	}
 	u.subscribers[id] = cb
-	u.count++
-	c := u.count
+	c := u.count.Add(1) // Atomic increment
 	u.mu.Unlock()
 
 	if c == 1 {
@@ -59,8 +58,7 @@ func (u *uniqSubscriber) unsubscribe(id string) {
 		return
 	}
 	delete(u.subscribers, id)
-	c := u.count - 1
-	u.count = c
+	c := u.count.Add(-1) // Atomic decrement
 	u.mu.Unlock()
 
 	if c == 0 {
@@ -100,6 +98,6 @@ func (u *uniqSubscriber) clear() {
 	for id := range u.subscribers {
 		delete(u.subscribers, id)
 	}
-	u.count = 0
+	u.count.Store(0) // Atomic reset
 	u.unsubscriberFunc(u.subscriptionPayload)
 }

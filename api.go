@@ -51,7 +51,7 @@ func (r *APIResponse[T]) UnmarshalJSON(data []byte) error {
 	responseData := parsed.Get("response", "data")
 
 	if responseData == nil {
-		return fmt.Errorf("missing response.data field in successful response")
+		return ErrMissingResponseData
 	}
 
 	b := responseData.MarshalTo(nil)
@@ -75,7 +75,7 @@ func (t *Tuple2[E1, E2]) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if len(raw) != 2 {
-		return fmt.Errorf("expected array of length 2, got %d", len(raw))
+		return fmt.Errorf("%w, got %d", ErrInvalidArrayLength, len(raw))
 	}
 	if err := json.Unmarshal(raw[0], &t.First); err != nil {
 		return err

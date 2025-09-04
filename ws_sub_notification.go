@@ -1,7 +1,5 @@
 package hyperliquid
 
-import "fmt"
-
 //go:generate easyjson -all
 
 type NotificationSubscriptionParams struct {
@@ -20,7 +18,7 @@ func (w *WebsocketClient) Notification(
 	return w.subscribe(payload, func(msg any) {
 		notification, ok := msg.(Notification)
 		if !ok {
-			callback(Notification{}, fmt.Errorf("invalid message type"))
+			callback(Notification{}, ErrInvalidMessageType)
 			return
 		}
 

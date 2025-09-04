@@ -3,10 +3,12 @@ package hyperliquid
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -281,6 +283,179 @@ func BenchmarkHTTPResponseReadingOptimized(b *testing.B) {
 	}
 }
 
+// BenchmarkErrorHandlingOptimizations benchmarks error handling improvements
+func BenchmarkErrorHandlingOptimizations(b *testing.B) {
+	// Test pre-defined errors vs fmt.Errorf
+	b.Run("ErrorCreation_FmtErrorf", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err := fmt.Errorf("callback cannot be nil")
+			_ = err
+		}
+	})
+
+	b.Run("ErrorCreation_Predefined", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err := ErrCallbackNil
+			_ = err
+		}
+	})
+
+	// Test error wrapping with context
+	baseErr := errors.New("base error")
+
+	b.Run("ErrorWrapping_FmtErrorf", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err := fmt.Errorf("failed to process: %w", baseErr)
+			_ = err
+		}
+	})
+
+	b.Run("ErrorWrapping_WithPool", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err := WrapError(baseErr, "failed to process")
+			_ = err
+		}
+	})
+
+	// Test error with dynamic content
+	b.Run("DynamicError_FmtErrorf", func(b *testing.B) {
+		channel := "trades"
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err := fmt.Errorf("no dispatcher for channel: %s", channel)
+			_ = err
+		}
+	})
+
+	b.Run("DynamicError_Optimized", func(b *testing.B) {
+		channel := "trades"
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err := fmt.Errorf("%w: %s", ErrNoDispatcher, channel)
+			_ = err
+		}
+	})
+}
+
+// BenchmarkConcurrencyOptimizations benchmarks the concurrency improvements
+func BenchmarkConcurrencyOptimizations(b *testing.B) {
+	// Test sync.Map vs regular map with RWMutex for subscriber access
+	b.Run("SubscriberAccess_RegularMap", func(b *testing.B) {
+		var mu sync.RWMutex
+		subscribers := make(map[string]*uniqSubscriber)
+		for i := 0; i < 100; i++ {
+			key := fmt.Sprintf("sub%d", i)
+			subscribers[key] = &uniqSubscriber{}
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			mu.RLock()
+			var count int
+			for _, sub := range subscribers {
+				if sub != nil {
+					count++
+				}
+			}
+			mu.RUnlock()
+			_ = count
+		}
+	})
+
+	b.Run("SubscriberAccess_SyncMap", func(b *testing.B) {
+		var subscribers sync.Map
+		for i := 0; i < 100; i++ {
+			key := fmt.Sprintf("sub%d", i)
+			subscribers.Store(key, &uniqSubscriber{})
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var count int
+			subscribers.Range(func(key, value any) bool {
+				if value != nil {
+					count++
+				}
+				return true
+			})
+			_ = count
+		}
+	})
+
+	// Test atomic vs mutex for counters
+	b.Run("Counter_WithMutex", func(b *testing.B) {
+		var mu sync.Mutex
+		var counter int64
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			mu.Lock()
+			counter++
+			mu.Unlock()
+		}
+	})
+
+	b.Run("Counter_WithAtomic", func(b *testing.B) {
+		var counter atomic.Int64
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			counter.Add(1)
+		}
+	})
+
+	// Test concurrent subscriber operations
+	b.Run("ConcurrentSubscriberOps_WithLocks", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var mu sync.RWMutex
+			subscribers := make(map[string]callback)
+			var count int64
+
+			var wg sync.WaitGroup
+			// Simulate concurrent access
+			for j := 0; j < 10; j++ {
+				wg.Add(1)
+				go func(id int) {
+					defer wg.Done()
+					mu.Lock()
+					subscribers[fmt.Sprintf("sub%d", id)] = func(any) {}
+					count++
+					mu.Unlock()
+				}(j)
+			}
+			wg.Wait()
+		}
+	})
+
+	b.Run("ConcurrentSubscriberOps_WithAtomic", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var mu sync.RWMutex // Still need mutex for map, but counter is atomic
+			subscribers := make(map[string]callback)
+			var count atomic.Int64
+
+			var wg sync.WaitGroup
+			// Simulate concurrent access
+			for j := 0; j < 10; j++ {
+				wg.Add(1)
+				go func(id int) {
+					defer wg.Done()
+					mu.Lock()
+					subscribers[fmt.Sprintf("sub%d", id)] = func(any) {}
+					mu.Unlock()
+					count.Add(1) // Atomic increment
+				}(j)
+			}
+			wg.Wait()
+		}
+	})
+}
+
 // BenchmarkWebSocketOptimizations benchmarks the WebSocket improvements
 func BenchmarkWebSocketOptimizations(b *testing.B) {
 	// Test message batching vs individual processing
@@ -330,9 +505,9 @@ func BenchmarkWebSocketOptimizations(b *testing.B) {
 				time.Sleep(100 * time.Nanosecond)
 			}
 		}
-		
+
 		data := "test_data"
-		
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			for _, cb := range callbacks {
@@ -349,9 +524,9 @@ func BenchmarkWebSocketOptimizations(b *testing.B) {
 				time.Sleep(100 * time.Nanosecond)
 			}
 		}
-		
+
 		data := "test_data"
-		
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			var wg sync.WaitGroup

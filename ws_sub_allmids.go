@@ -1,7 +1,5 @@
 package hyperliquid
 
-import "fmt"
-
 //go:generate easyjson -all
 
 type AllMidsSubscriptionParams struct {
@@ -20,7 +18,7 @@ func (w *WebsocketClient) AllMids(
 	return w.subscribe(payload, func(msg any) {
 		allmids, ok := msg.(AllMids)
 		if !ok {
-			callback(AllMids{}, fmt.Errorf("invalid message type"))
+			callback(AllMids{}, ErrInvalidMessageType)
 			return
 		}
 

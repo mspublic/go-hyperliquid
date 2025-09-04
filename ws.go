@@ -44,9 +44,9 @@ type Subscription struct {
 type WebsocketClient struct {
 	url                   string
 	conn                  *websocket.Conn
-	mu                    sync.RWMutex
+	mu                    sync.RWMutex // Only for connection state
 	writeMu               sync.Mutex
-	subscribers           map[string]*uniqSubscriber
+	subscribers           sync.Map // Lock-free subscriber map
 	msgDispatcherRegistry map[string]msgDispatcher
 	nextSubID             atomic.Int64
 	done                  chan struct{}
@@ -60,6 +60,11 @@ type WebsocketClient struct {
 	batchTimeout   time.Duration
 	messageBuffer  chan wsMessage
 	asyncCallbacks bool // Enable async callback dispatch
+
+	// Error handling and circuit breaker
+	reconnectAttempts    atomic.Int64
+	maxReconnectAttempts int64
+	lastError            atomic.Value // stores error
 }
 
 func NewWebsocketClient(baseURL string, opts ...WsOpt) *WebsocketClient {
@@ -75,13 +80,13 @@ func NewWebsocketClient(baseURL string, opts ...WsOpt) *WebsocketClient {
 	wsURL := parsedURL.String()
 
 	cli := &WebsocketClient{
-		url:           wsURL,
-		done:          make(chan struct{}),
-		reconnectWait: time.Second,
-		subscribers:   make(map[string]*uniqSubscriber),
-		batchSize:     10,                        // Process up to 10 messages in batch
-		batchTimeout:  5 * time.Millisecond,      // Max 5ms batching delay
-		messageBuffer: make(chan wsMessage, 100), // Buffer up to 100 messages
+		url:                  wsURL,
+		done:                 make(chan struct{}),
+		reconnectWait:        time.Second,
+		batchSize:            10,                        // Process up to 10 messages in batch
+		batchTimeout:         5 * time.Millisecond,      // Max 5ms batching delay
+		messageBuffer:        make(chan wsMessage, 100), // Buffer up to 100 messages
+		maxReconnectAttempts: 10,                        // Max reconnection attempts
 		msgDispatcherRegistry: map[string]msgDispatcher{
 			ChannelPong:         NewPongDispatcher(),
 			ChannelTrades:       NewMsgDispatcher[Trades](ChannelTrades),
@@ -140,13 +145,12 @@ func (w *WebsocketClient) subscribe(
 	callback func(any),
 ) (*Subscription, error) {
 	if callback == nil {
-		return nil, fmt.Errorf("callback cannot be nil")
+		return nil, ErrCallbackNil
 	}
 
-	w.mu.Lock()
-
 	pkey := payload.Key()
-	subscriber, exists := w.subscribers[pkey]
+	subscriberVal, exists := w.subscribers.Load(pkey)
+	var subscriber *uniqSubscriber
 	if !exists {
 		subscriber = newUniqSubscriber(
 			pkey,
@@ -161,9 +165,7 @@ func (w *WebsocketClient) subscribe(
 			},
 			// on unsubscribe
 			func(p subscriptable) {
-				w.mu.Lock()
-				defer w.mu.Unlock()
-				delete(w.subscribers, pkey)
+				w.subscribers.Delete(pkey)
 				if err := w.sendUnsubscribe(p); err != nil {
 					if w.logger != nil {
 						w.logger.Errorf("failed to unsubscribe: %v", err)
@@ -173,10 +175,13 @@ func (w *WebsocketClient) subscribe(
 			w.asyncCallbacks, // Pass async dispatch setting
 		)
 
-		w.subscribers[pkey] = subscriber
+		// Try to store, but use existing if another goroutine created it first
+		if actualVal, loaded := w.subscribers.LoadOrStore(pkey, subscriber); loaded {
+			subscriber = actualVal.(*uniqSubscriber)
+		}
+	} else {
+		subscriber = subscriberVal.(*uniqSubscriber)
 	}
-
-	w.mu.Unlock()
 
 	nextID := w.nextSubID.Add(1)
 	subID := key(pkey, strconv.Itoa(int(nextID)))
@@ -205,12 +210,18 @@ func (w *WebsocketClient) close() error {
 	defer w.mu.Unlock()
 
 	if w.conn != nil {
-		return w.conn.Close()
+		err := w.conn.Close()
+
+		// Clear all subscribers using sync.Map
+		w.subscribers.Range(func(key, value any) bool {
+			subscriber := value.(*uniqSubscriber)
+			subscriber.clear()
+			return true
+		})
+
+		return err
 	}
 
-	for _, subscriber := range w.subscribers {
-		subscriber.clear()
-	}
 	return nil
 }
 
@@ -302,18 +313,18 @@ func (w *WebsocketClient) pingPump(ctx context.Context) {
 func (w *WebsocketClient) dispatch(msg wsMessage) error {
 	dispatcher, ok := w.msgDispatcherRegistry[msg.Channel]
 	if !ok {
-		return fmt.Errorf("no dispatcher for channel: %s", msg.Channel)
+		return fmt.Errorf("%w: %s", ErrNoDispatcher, msg.Channel)
 	}
 
-	w.mu.RLock()
 	// Use pool for subscriber slice to reduce allocations
 	subscribersPtr := subscriberSlicePool.Get().(*[]*uniqSubscriber)
 	subscribers := (*subscribersPtr)[:0] // Reset length but keep capacity
 
-	for _, subscriber := range w.subscribers {
-		subscribers = append(subscribers, subscriber)
-	}
-	w.mu.RUnlock()
+	// Lock-free iteration over subscribers using sync.Map
+	w.subscribers.Range(func(key, value any) bool {
+		subscribers = append(subscribers, value.(*uniqSubscriber))
+		return true // Continue iteration
+	})
 
 	err := dispatcher.Dispatch(subscribers, msg)
 
@@ -375,11 +386,29 @@ func (w *WebsocketClient) reconnect(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			if err := w.Connect(ctx); err == nil {
+			// Circuit breaker: stop reconnecting after max attempts
+			attempts := w.reconnectAttempts.Load()
+			if attempts >= w.maxReconnectAttempts {
+				if w.logger != nil {
+					w.logger.Errorf("max reconnection attempts reached (%d), giving up", w.maxReconnectAttempts)
+				}
 				return
 			}
+
+			w.reconnectAttempts.Add(1)
+
+			if err := w.Connect(ctx); err == nil {
+				// Reset attempts on successful connection
+				w.reconnectAttempts.Store(0)
+				w.lastError.Store(nil)
+				return
+			} else {
+				// Store last error
+				w.lastError.Store(err)
+			}
+
 			time.Sleep(w.reconnectWait)
-			w.reconnectWait *= 2 // TODO: configurable strategies such as exponential backoff and the like
+			w.reconnectWait *= 2 // Exponential backoff
 			if w.reconnectWait > time.Minute {
 				w.reconnectWait = time.Minute
 			}
@@ -388,12 +417,18 @@ func (w *WebsocketClient) reconnect(ctx context.Context) {
 }
 
 func (w *WebsocketClient) resubscribeAll() error {
-	for _, subscriber := range w.subscribers {
+	var firstError error
+	w.subscribers.Range(func(key, value any) bool {
+		subscriber := value.(*uniqSubscriber)
 		if err := w.sendSubscribe(subscriber.subscriptionPayload); err != nil {
-			return fmt.Errorf("resubscribe: %w", err)
+			if firstError == nil {
+				firstError = fmt.Errorf("resubscribe: %w", err)
+			}
+			return false // Stop iteration on first error
 		}
-	}
-	return nil
+		return true // Continue iteration
+	})
+	return firstError
 }
 
 func (w *WebsocketClient) sendSubscribe(payload subscriptable) error {
@@ -419,7 +454,7 @@ func (w *WebsocketClient) writeJSON(v any) error {
 	defer w.writeMu.Unlock()
 
 	if w.conn == nil {
-		return fmt.Errorf("connection closed")
+		return ErrConnectionClosed
 	}
 
 	if w.debug && w.logger != nil {
@@ -428,4 +463,24 @@ func (w *WebsocketClient) writeJSON(v any) error {
 	}
 
 	return w.conn.WriteJSON(v)
+}
+
+// GetLastError returns the last connection error (for monitoring)
+func (w *WebsocketClient) GetLastError() error {
+	if err := w.lastError.Load(); err != nil {
+		return err.(error)
+	}
+	return nil
+}
+
+// GetReconnectAttempts returns the current number of reconnection attempts
+func (w *WebsocketClient) GetReconnectAttempts() int64 {
+	return w.reconnectAttempts.Load()
+}
+
+// IsHealthy returns true if the WebSocket connection is healthy
+func (w *WebsocketClient) IsHealthy() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.conn != nil && w.GetLastError() == nil
 }
